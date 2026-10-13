@@ -1,0 +1,4 @@
+NumRegressors 2
+
+tasks_pseudoword.txt
+tasks_word.txt

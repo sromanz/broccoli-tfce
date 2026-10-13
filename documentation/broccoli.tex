@@ -1,0 +1,125 @@
+\documentclass[11pt,a4paper]{book}
+\usepackage[latin1]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+%\usepackage{myphdstyle}
+\usepackage{lmodern}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{color}
+\usepackage{rotating}
+\usepackage[]{subfigure}
+\usepackage[round]{natbib}
+\usepackage{fancyhdr,lastpage}
+%\usepackage{algpseudocode}
+
+\makeatletter
+\newcommand{\rmnum}[1]{\romannumeral #1}
+\newcommand{\Rmnum}[1]{\expandafter\@slowromancap\romannumeral #1@}
+\makeatother
+
+%%% Clear Header %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Clear Header Style on the Last Empty Odd pages
+\makeatletter
+\def\cleardoublepage{\clearpage\if@twoside \ifodd\c@page\else
+\hbox{}
+\thispagestyle{empty}     
+\newpage 
+\if@twocolumn\hbox{}\newpage\fi\fi\fi}
+\makeatother
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{document}
+
+%\setcounter{page}{1}
+%\pagenumbering{roman}
+
+%\pagenumbering{roman}
+
+
+\thispagestyle{empty}
+\makeatletter
+\begin{center}
+  {\huge \textbf{BROCCOLI \\ - \\ Software for Fast fMRI Analysis \\ on Many-Core CPUs and GPUs}}\\[1 cm]
+  {\Large Anders Eklund}\\[1.5 cm]
+  {\Large 2015-09-11}\\[1.5 cm]
+\end{center}
+
+
+%\cleardoublepage
+%\newpage
+\renewcommand{\contentsname}{Table of Contents}
+\tableofcontents
+
+
+%\cleardoublepage
+%\newpage
+
+\pagenumbering{arabic}
+%\chapter{Introduction}
+%\label{sec:information}
+%\input{introduction.tex}
+
+
+%\cleardoublepage
+%\newpage
+\chapter{Introduction}
+\label{sec:intro}
+\input{introduction.tex}
+
+\cleardoublepage
+\newpage
+\chapter{First level analysis}
+\label{sec:firstlevel}
+\input{firstlevel.tex}
+
+\cleardoublepage
+\newpage
+\chapter{Registration}
+\label{sec:registration}
+\input{registration.tex}
+
+\cleardoublepage
+\newpage
+\chapter{Transformation}
+\label{sec:transformation}
+\input{transformation.tex}
+
+\cleardoublepage
+\newpage
+\chapter{Motion correction}
+\label{sec:motion}
+\input{motioncorrection.tex}
+
+\cleardoublepage
+\newpage
+\chapter{Smoothing}
+\label{sec:smoothing}
+\input{smoothing.tex}
+
+\cleardoublepage
+\newpage
+\chapter{GLM}
+\label{sec:glm}
+\input{glm.tex}
+
+\cleardoublepage
+\newpage
+\chapter{Permutation testing}
+\label{sec:randomise}
+\input{randomise.tex}
+
+\cleardoublepage
+\newpage
+\chapter{ICA}
+\label{sec:ica}
+\input{ica.tex}
+
+
+\bibliographystyle{abbrvnat}
+\bibliography{refs}
+
+\cleardoublepage
+
+\end{document}
+

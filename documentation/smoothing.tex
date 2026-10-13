@@ -1,0 +1,71 @@
+\section{Introduction}
+
+BROCCOLI provides a separate function for smoothing. In its simplest form, smoothing can with the bash wrapper be performed as
+
+\begin{verbatim}
+Smoothing fMRI.nii
+\end{verbatim}
+where fMRI.nii is a 4D fMRI dataset.
+
+\section{OpenCL options}
+
+The following OpenCL options are available
+
+\begin{itemize}
+
+\item -platform
+\newline \newline The OpenCL platform to use (default 0).
+
+\item -device
+\newline \newline The OpenCL device to use (default 0).
+
+\end{itemize}
+
+\section{Smoothing options}
+
+The following smoothing options are available
+
+\begin{itemize}
+
+\item -fwhm
+\newline \newline Amount of smoothing to apply (in mm, default 6 mm).
+
+\item -mask
+\newline \newline Perform smoothing inside mask (normalized convolution).
+
+\item -automask
+\newline \newline Generate a mask and perform smoothing \\ inside mask (normalized convolution).
+
+\end{itemize}
+
+\section{Outputs}
+
+By default, the function saves the results as input\_sm.nii. If -automask is selected, the generated mask will be saved as input\_mask.nii.
+
+\section{Output options}
+
+The following output options are available
+
+\begin{itemize}
+
+\item -output 
+\newline \newline Set output filename (default input\_sm.nii). 
+
+\end{itemize}
+
+\section{Additional options}
+
+The following additional options are available
+
+\begin{itemize}
+
+\item -quiet 
+\newline \newline Don't print anything to the terminal (default false). 
+
+\item -verbose
+\newline \newline Print extra stuff (default false).
+ 
+
+\end{itemize}
+
+

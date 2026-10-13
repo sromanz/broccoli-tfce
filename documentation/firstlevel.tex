@@ -1,0 +1,399 @@
+\section{Introduction}
+
+BROCCOLI performs first level fMRI analysis using a single command. The analysis involves registering the anatomical volume to a brain template (using linear as well as non-linear registration), registering one fMRI volume to the anatomical volume, slice timing correction, motion correction, smoothing and statistical analysis. In contrast to other software packages, it is up to the user to decide which intermediate results to save. In its simplest form, a first level analysis can with the bash wrapper be performed as
+
+\begin{verbatim}
+FirstLevelAnalysis fMRI.nii T1_brain.nii BrainTemplate.nii ... 
+  regressors.txt contrasts.txt 
+\end{verbatim}
+fMRI.nii is here the 4D fMRI data, T1\_brain.nii is the skullstripped anatomical volume of the subject and BrainTemplate.nii is for example the MNI template in the FSL software (without skull). Currently it is necessary that all the NIfTI files are stored in the same orientation (e.g. RPI). The orientation can for example be checked with the AFNI function 3dinfo, and the orientation can be changed using the function 3dresample (e.g. 3dresample -orient RPI -input volume.nii -prefix volume\_RPI.nii). \\ \\ regressors.txt is a text file that contains the number of regressors to use, and the filename of each regressor. It can for example look like
+
+\begin{verbatim}
+NumRegressors 3
+
+task1.txt
+task2.txt
+task3.txt
+\end{verbatim}
+Each task file needs to include the number of events, the start time of each event, the length of each event and the value for the regressor of each event (this format is very similar to the one used by the FSL software). A task file can for example look like
+
+\begin{verbatim}
+NumEvents 8
+
+47.532543       2.517515        1
+68.789386       2.950905        1
+93.547212       2.934332        1
+165.670213      3.584591        1
+190.078151      1.817203        1
+257.349564      2.584177        1
+280.457018      1.367038        1
+308.66593       2.084071        1
+\end{verbatim}
+The regressors can also be raw, in the sense that you instead directly provide the value for each volume / time point in the fMRI data. A regressor file for an fMRI dataset with 8 volumes should then look like
+
+\begin{verbatim}
+0.3
+0.5
+1.0
+1.0
+1.0
+2.0
+3.1
+2.2
+\end{verbatim}
+where each row represents the value of the regressor for that volume. The number of rows must be equal to the number of volumes. It is also possible to give the whole design matrix as a single text file, it can for example look like
+\begin{verbatim}
+NumRegressors 2
+
+0.5377  -0.1241	
+1.8339  1.4897
+-2.2588 1.4090
+0.8622  1.4172
+0.3188  0.6715
+-1.3077 -1.2075	
+-0.4336  0.7172
+0.3426  1.6302
+\end{verbatim}
+In all cases, BROCCOLI will automatically add detrending regressors and remove the mean of all the activity regressors. \newline \newline contrasts.txt contains a list of all the contrasts for which BROCCOLI will calculate a volume with t-scores. An example is given by
+
+\begin{verbatim}
+NumRegressors 3
+NumContrasts 9
+
+1.0 0.0 0.0
+0.0 1.0 0.0
+0.0 0.0 1.0
+1.0 -1.0 0.0
+-1.0 1.0 0.0
+1.0 0.0 -1.0
+0.0 1.0 -1.0
+-1.0 0.0 1.0
+0.0 -1.0 1.0
+\end{verbatim}
+The user only has to define the contrast values for the original activity regressors. BROCCOLI will automatically add additional zeros for nuisance regressors (motion, global mean) and temporal derivatives.
+
+
+\subsection{Several runs}
+
+If several runs are available for one subject, they can be analyzed together as
+\begin{verbatim}
+FirstLevelAnalysis -runs 3 run1.nii run2.nii run3.nii T1_volume.nii MNI_volume.nii 
+regressors_run1.txt regressors_run2.txt regressors_run3.txt contrasts.txt [options]
+\end{verbatim}
+for a GLM, or as
+\begin{verbatim}
+FirstLevelAnalysis -runs 3 run1.nii run2.nii run3.nii 
+T1_volume.nii MNI_volume.nii -regressonly [options]
+\end{verbatim}
+if only preprocessing and regression of nuisance variables (mean, trends, (motion), (global mean)) is desired. \\
+
+\noindent If, for some reason, a subject did not do a specific task for one or several runs, this can be handled by using a dummy regressor, e.g.
+\begin{verbatim}
+NumRegressors 3
+
+task1.txt
+task2.txt
+dummy.txt
+\end{verbatim}
+where dummy.txt only contains
+\begin{verbatim}
+NumEvents 0
+\end{verbatim}
+
+\subsection{Checking the design matrix}
+
+To check if the design matrix looks correct, the options -savedesignmatrix and -saveoriginaldesignmatrix can be used. A text file will be generated with all the regressors (-savedesignmatrix), or only the task regressors (-saveoriginaldesignmatrix). If the AFNI software package is installed, these can for example be viewed as
+
+\begin{verbatim}
+1dplot fMRI_total_designmatrix.txt
+\end{verbatim}
+or
+\begin{verbatim}
+1dplot fMRI_original_designmatrix.txt
+\end{verbatim}
+
+\section{OpenCL options}
+
+The following OpenCL options are available
+
+\begin{itemize}
+
+\item -platform
+\newline \newline The OpenCL platform to use (default 0).
+
+\item -device
+\newline \newline The OpenCL device to use (default 0).
+
+\end{itemize}
+
+\section{Registration options}
+
+Several options can be used to control the image registration, see the chapter about image registration for further information.
+
+\section{Preprocessing options}
+
+The following preprocessing options are available
+
+\begin{itemize}
+
+\item -noslicetimingcorrection
+\newline \newline Do not apply slice timing correction. \newline
+
+\item -nomotioncorrection
+\newline \newline Do not apply motion correction. \newline
+
+\item -nosmoothing
+\newline \newline Do not apply any smoothing. \newline
+
+\item -slicepattern
+\newline \newline Set the sampling pattern used during scanning \newline
+ 				  (overrides pattern provided in NIFTI file) \newline
+                  0 = sequential 1-N (bottom-up), 1 = sequential N-1 (top-down), \newline
+                  2 = interleaved 1-N, 3 = interleaved N-1 \newline \newline
+                  No slice timing correction is performed if pattern in \newline
+                  NIFTI file is unknown and no pattern is provided. 
+
+\item -iterationsmc 
+\newline \newline Set the number of iterations used for the \newline motion correction (the default is 5).
+
+\item -smoothing 
+\newline \newline Set the amount of smoothing applied to \newline each fMRI volume (the default is 6 mm FWHM). 
+
+\item -slicecustom
+\newline \newline Provide a text file with the slice times, \newline
+				  one value per slice, in milli seconds (0 - TR). \newline
+
+\item -slicecustomref
+\newline \newline Provide a reference slice for the custom slice times, \newline
+				  between 0 and N-1, where N is the number of slices. \newline
+				  The default reference slice is N/2.
+ 
+\end{itemize}
+
+A text file with slice timing information can for example look like
+\begin{verbatim}
+    0.0000
+  180.0000
+  362.5000
+  545.0000
+  727.5000
+   60.0000
+  242.5000
+  425.0000
+  605.0000
+  787.5000
+  120.0000
+  302.5000
+  485.0000
+  667.5000
+    0.0000
+  180.0000
+  362.5000
+  545.0000
+  727.5000
+   60.0000
+  242.5000
+  425.0000
+  605.0000
+  787.5000
+  120.0000
+  302.5000
+  485.0000
+  667.5000
+\end{verbatim}
+which means that the first slice was collected at time 0, the second slice was collected after 180 milli seconds, the third slice was collected after 362.5 milli seconds, and so on.
+
+
+\section{Statistical options}
+
+The following statistical options are available
+
+\begin{itemize}
+
+\item -runs
+\newline \newline Number of fMRI runs that will be concatenated and analyzed together, necessary to provide one design file per run. Separate detrending regressors will be added for each run. The number of task regressors will not change compared to a single run, meaning that the contrast vectors are the same as for a single run.
+
+\item -preprocessingonly
+\newline \newline Only perform preprocessing, no GLM or regression is performed.
+
+\item -detrendingregressors
+\newline \newline Set the number of detrending regressors (per run), 1 - 4. 1 means a single regressor for the intercept, 2 means intercept + linear trends, 3 means intercept + linear trends + quadratic trends, 4 means intercept + linear trends + quadratic trends + cubic trends (the default is 4 detrending regressors).
+
+\item -betasonly
+\newline \newline Only perform preprocessing and calculate beta values and contrasts, no t- or F-scores are calculated. Possible to use the options -regressmotion and -regressglobalmean.
+
+\item -regressonly
+\newline \newline Only perform preprocessing and regress nuisance variables, no beta values or contrasts are calculated. Regressor and contrast files are not needed. Possible to use the options -regressmotion and -regressglobalmean.
+
+\item -rawregressors
+\newline \newline Use raw regressors (FSL format, one line per volume/TR). These regressors will not be convolved with any hemodynamic response function.
+
+\item -rawdesignmatrix 
+\newline \newline Provide the design matrix in a single text file (FSL format, one regressor per column, one value per volume/TR). These regressors will not be convolved with any hemodynamic response function. It is still possible to use the options -regressmotion and -regressglobalmean.
+
+\item -regressmotion 
+\newline \newline Add the 6 estimated motion parameters (3 for translation and 3 for rotation) to the design matrix, to further suppress the effect of head motion. The contrast vectors are automatically extended with zeros for these additional regressors. 
+
+\item -regressglobalmean 
+\newline \newline Include a regressor for the global mean in the design matrix. The contrast vectors are automatically extended with one zero for this additional regressor. 
+ 
+\item -temporalderivatives 
+\newline \newline Add one additional regressor for each original regressor; the temporal derivative of each regressor. This makes it possible to adjust for a small time difference between the original regressor and the time series in each voxel. The contrast vectors are automatically extended with zeros for these additional regressors. Not possible to use for -rawdesignmatrix.
+
+\item -permute
+\newline \newline Run a permutation test after the conventional first level analysis. In each permutation, a random reshuffling of the fMRI volumes is performed to create a new set of null data. The statistical analysis is performed in each permutation, to empirically estimate the null distribution. 
+
+\item -inferencemode 
+\newline \newline Set if voxel-wise or cluster-wise p-values should be calculated for the permutation test, 0 = voxel, 1 = cluster extent, 2 = cluster mass, 3 = threshold free cluster enhancement (TFCE) (default 1)
+
+\item -cdt 
+\newline \newline Cluster defining threshold for permutation based cluster inference (default 2.5). 
+
+\item -permutations 
+\newline \newline Set the number of permutations (default 1,000)
+
+\item -bayesian 
+\newline \newline Run Bayesian first level analysis.  Note that this option currently only works for 2 regressors. In each voxel, a Gibbs sampler is used to estimate the posterior probability of each contrast being larger than 0. This option cannot be combined with -permute.
+
+\item -iterationsmcmc 
+\newline \newline Set the number of MCMC iterations to be used (default 1,000).
+
+\end{itemize}
+
+\section{Outputs}
+
+The first level analysis results in beta weights, contrast estimates, t-scores and p-values (if the option -permute is used). For an analysis with 2 regressors, a total of 6 regressors will be used (the 2 original regressors and 4 detrending regressors). The beta weights for these regressors will be saved in the brain template space as
+
+\begin{verbatim}
+fMRI_beta_regressor001_MNI.nii 
+fMRI_beta_regressor002_MNI.nii 
+fMRI_beta_regressor003_MNI.nii 
+fMRI_beta_regressor004_MNI.nii 
+fMRI_beta_regressor005_MNI.nii 
+fMRI_beta_regressor006_MNI.nii 
+\end{verbatim}
+For each contrast, BROCCOLI will also store the contrast of parameter estimate (COPE) and the corresponding t-scores, e.g.
+
+\begin{verbatim}
+fMRI_cope_contrast001_MNI.nii  
+fMRI_cope_contrast002_MNI.nii  
+
+fMRI_tscores_contrast001_MNI.nii
+fMRI_tscores_contrast002_MNI.nii
+\end{verbatim}
+
+\section{Output options}
+
+The following output options are available
+
+\begin{itemize}
+
+\item -savetransformations
+\newline \newline Save all affine transformation matrices (T1-MNI,EPI-T1,EPI-MNI). They can be used with the function TransformVolume (default no).
+
+\item -savet1interpolated        
+\newline \newline Save T1 volume after resampling to MNI voxel size and resizing to MNI size (default no). 
+
+\item -savet1alignedlinear       
+\newline \newline Save T1 volume linearly aligned to the MNI volume (default no). 
+
+\item -savet1alignednonlinear    
+\newline \newline Save T1 volume non-linearly aligned to the MNI volume (default no). 
+
+\item -saveepialignedt1          
+\newline \newline Save EPI volume aligned to the T1 volume (default no). 
+
+\item -saveepialignedmni         
+\newline \newline Save EPI volume aligned to the MNI volume (default no). 
+
+\item -saveallaligned            
+\newline \newline Save all aligned volumes (T1 interpolated, T1-MNI linear, T1-MNI non-linear, EPI-T1, EPI-MNI) (default no). 
+
+\item -saveepimask               
+\newline \newline Save EPI mask for fMRI data  (default no). 
+
+\item -savemnimask               
+\newline \newline Save mask for fMRI data, in MNI space  (default no). 
+
+\item -saveslicetimingcorrected  
+\newline \newline Save slice timing corrected fMRI volumes  (default no). 
+
+\item -savemotioncorrected       
+\newline \newline Save motion corrected fMRI volumes (default no). 
+
+\item -savemotionparameters       
+\newline \newline Save motion parameters to a text file (default no). 
+
+\item -savesmoothed              
+\newline \newline Save smoothed fMRI volumes (default no). 
+
+\item -saveactivityepi           
+\newline \newline Save activity maps in EPI space \newline (in addition to MNI space, default no). 
+
+\item -saveactivityt1            
+\newline \newline Save activity maps in T1 space \newline (in addition to MNI space, default no). 
+
+\item -saveresiduals             
+\newline \newline Save residuals after GLM analysis (default no). 
+
+\item -saveresidualsmni          
+\newline \newline Save residuals after GLM analysis, in MNI space (default no). 
+
+\item -saveoriginaldesignmatrix  
+\newline \newline Save the original design matrix used (default no). This is the design matrix before convolving the regressors with the hemodynamic response function.
+
+\item -savedesignmatrix          
+\newline \newline Save the total design matrix used (default no). This is the total design matrix being used by BROCCOLI. It contains detrending regressors and motion regressors (if -regressmotion is used).
+
+\item -savearparameters          
+\newline \newline Save the estimated AR coefficients (default no). 
+
+\item -savearparameterst1        
+\newline \newline Save the estimated AR coefficients, in T1 space (default no). 
+
+\item -savearparametersmni       
+\newline \newline Save the estimated AR coefficients, in MNI space (default no). 
+
+\item -saveallpreprocessed       
+\newline \newline Save all preprocessed fMRI data  \newline (slice timing corrected, motion corrected, smoothed) (default no). 
+
+\item -saveunwhitenedresults     
+\newline \newline Save all statistical results without voxel-wise whitening (default no). 
+
+\item -saveall                   
+\newline \newline Save everything (default no). 
+
+\item -output 
+\newline \newline Set output filename prefix (default fMRI\_).
+
+\end{itemize}
+
+\newpage
+\section{Additional options}
+
+The following additional options are available
+
+\begin{itemize}
+
+\item -quiet
+\newline \newline Don't print anything to the terminal (default false). 
+
+\item -verbose
+\newline \newline Print extra stuff (default false).
+
+\item -debug
+\newline \newline Get additional debug information saved as nifti files (default no). Warning: This will use a lot of extra memory! 
+
+\end{itemize}
+
+\section{Checking the registration}
+
+To check the registration between the anatomical volume and the brain template, set one volume as the underlay (e.g. T1\_brain\_aligned\_linear.nii or T1\_brain\_aligned\_nonlinear.nii) and one as the overlay \\ (e.g. MNI152\_T1\_1mm\_brain.nii.gz). To check the registration between the fMRI volume and the anatomical volume, set the interpolated anatomical volume (e.g. T1\_brain\_interpolated.nii) as the underlay and the aligned fMRI volume (e.g. fMRI\_aligned\_t1.nii) as the overlay.
+
+
+
+
+
+
+
+
