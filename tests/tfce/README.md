@@ -72,16 +72,26 @@ RandomiseGroupLevel data.nii.gz -groupmean -mask mask.nii.gz -permutations 300 -
 python3 <repo>/tests/tfce/validate.py /tmp/syn tfce   # prints PASS/FAIL
 ```
 
-## Comparison with FSL randomise (exact)
+## Comparison with FSL randomise
 
-With 12 subjects there are 2^12 = 4096 sign flips. randomise enumerates all of them when asked for
-more, and BROCCOLI does the same with `-permutations 4096`, so both use the identical null set and
-the corrected p-values should agree voxel by voxel.
+`run_comparison.sh` runs both programs on the same data with the same binary mask, times them
+and compares t-maps, TFCE maps and FWE-corrected p-values voxel by voxel (FSL must be loaded):
 
 ```
-randomise -i data.nii.gz -o fsl -m mask.nii.gz -1 -T -R -n 5000
-RandomiseGroupLevel data.nii.gz -groupmean -mask mask.nii.gz -permutations 4096 -inferencemode 3 -output broc
-python3 <repo>/tests/tfce/compare_with_fsl.py fsl broc mask.nii.gz
+tests/tfce/run_comparison.sh --synthetic /tmp/cmp                                   # 12-subject test data
+tests/tfce/run_comparison.sh all_subjects.nii.gz mask.nii.gz cmp_out 5000 -- -platform 0 -device 0
 ```
-`-R` makes randomise write the raw `_tfce_tstat1` map. Expect tiny (~1e-6 relative) TFCE differences
-from single- vs double-precision arithmetic.
+It runs `randomise -i data -o fsl -m mask -1 -T -R -n <n_perm>` and
+`RandomiseGroupLevel data -groupmean -mask mask -inferencemode 3 -permutations <n_perm>`
+(after an untimed warm-up run, so GPU kernel compilation is not counted), then prints a report and
+writes everything to `<outdir>/comparison.log`.
+
+What to expect:
+- **N <= 12 subjects** (n_perm >= 2^N): both programs use all 2^N sign flips, i.e. the identical null
+  distribution, so the corrected p-values should be identical in every voxel and the 95th percentiles
+  of the null should agree to ~1e-6 relative.
+- **More subjects**: both draw random sign flips. t- and TFCE maps still agree (~1e-6 relative; a
+  handful of voxels can differ more when a value lies within float rounding of a TFCE step), corrected
+  p-values agree within Monte Carlo error (about ±0.006 at p = 0.05 with 5000 permutations).
+- The script compares one-sample (group mean) designs. For GLM designs, run both programs by hand;
+  `compare_with_fsl.py fsl broccoli mask.nii.gz --contrast N` compares any contrast.
