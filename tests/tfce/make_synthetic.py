@@ -32,13 +32,14 @@ def main():
     ap.add_argument("--subjects", type=int, default=12)
     ap.add_argument("--shape", type=int, nargs=3, default=[40, 48, 40])
     ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--amplitude", type=float, default=1.5, help="scale of the planted effect")
     a = ap.parse_args()
     os.makedirs(a.outdir, exist_ok=True)
     rng = np.random.default_rng(a.seed)
     X, Y, Z = a.shape
     shape_zyx = (Z, Y, X)
 
-    signal = 0.9 * blob(shape_zyx, (20, 24, 12), 3.0) + 0.6 * blob(shape_zyx, (18, 20, 28), 4.0)
+    signal = a.amplitude * (1.0 * blob(shape_zyx, (20, 24, 12), 3.0) + 0.6 * blob(shape_zyx, (18, 20, 28), 4.0))
     vols = []
     for _ in range(a.subjects):
         noise = ndimage.gaussian_filter(rng.standard_normal(shape_zyx), 1.5)

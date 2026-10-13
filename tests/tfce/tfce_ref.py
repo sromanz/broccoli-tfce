@@ -110,8 +110,9 @@ def tfce_fsl_literal(vol, delta=0.0, H=2.0, E=0.5, connectivity=6):
 
 
 def randomise_delta(unpermuted_stat_in_mask):
-    """Delta randomise uses for every permutation of one contrast."""
-    return np.float32(np.float32(np.max(unpermuted_stat_in_mask)) / np.float32(100.0))
+    """Delta randomise uses for every permutation of one contrast:
+    float(double(max) / 100.0), from the unpermuted statistic inside the mask."""
+    return np.float32(np.float64(np.float32(np.max(unpermuted_stat_in_mask))) / 100.0)
 
 
 if __name__ == "__main__":

@@ -246,6 +246,12 @@ void BROCCOLI_LIB::SetApplySmoothing(bool value)
 // Set some default values
 void BROCCOLI_LIB::SetStartValues()
 {
+	TFCE_H = 2.0f;
+	TFCE_E = 0.5f;
+	TFCE_CONNECTIVITY = 6;
+	TFCE_DELTA_OVERRIDE = 0.0f;
+	h_TFCE_Maps_MNI = NULL;
+
 	INITIALIZATION_ERROR = "";
 	OPENCL_ERROR = "";
 
@@ -358,7 +364,7 @@ void BROCCOLI_LIB::SetStartValues()
 
 	error = 0;
 
-	NUMBER_OF_OPENCL_KERNELS = 102;
+	NUMBER_OF_OPENCL_KERNELS = 108;
 
 	commandQueue = NULL;
 	program = NULL;
@@ -508,6 +514,12 @@ void BROCCOLI_LIB::SetStartValues()
     createKernelErrorCalculateStatisticalMapsGLMFTestSecondLevelPermutation = 0;
     createKernelErrorCalculateStatisticalMapsMeanSecondLevelPermutation = 0;
     createKernelErrorCalculateStatisticalMapSearchlight = 0;
+    createKernelErrorTFCEInitLabels = 0;
+    createKernelErrorTFCEMergeLabels = 0;
+    createKernelErrorTFCECompressLabels = 0;
+    createKernelErrorTFCEClusterSizes = 0;
+    createKernelErrorTFCEAccumulate = 0;
+    createKernelErrorTFCEMaxOrderedKey = 0;
     createKernelErrorTransformData = 0;
     createKernelErrorRemoveLinearFit = 0;
     createKernelErrorRemoveLinearFitSlice = 0;
@@ -622,6 +634,12 @@ void BROCCOLI_LIB::SetStartValues()
     runKernelErrorCalculateStatisticalMapsGLMFTestSecondLevelPermutation = 0;
     runKernelErrorCalculateStatisticalMapsMeanSecondLevelPermutation = 0;
     runKernelErrorCalculateStatisticalMapSearchlight = 0;
+    runKernelErrorTFCEInitLabels = 0;
+    runKernelErrorTFCEMergeLabels = 0;
+    runKernelErrorTFCECompressLabels = 0;
+    runKernelErrorTFCEClusterSizes = 0;
+    runKernelErrorTFCEAccumulate = 0;
+    runKernelErrorTFCEMaxOrderedKey = 0;
     runKernelErrorTransformData = 0;
     runKernelErrorRemoveLinearFit = 0;
     runKernelErrorRemoveLinearFitSlice = 0;
@@ -999,6 +1017,7 @@ void BROCCOLI_LIB::CreateProgramFromBinary(cl_context context, cl_device_id devi
 		name = name.substr(6,name.size());
 		thisFilename.append("_");
 		thisFilename.append(name);	
+		thisFilename.append(GetKernelSourceTag(k));
 		thisFilename.append(".bin");
 
 		free(value);
@@ -1129,6 +1148,7 @@ bool BROCCOLI_LIB::SaveProgramBinary(cl_device_id device, std::string filename, 
 			name = name.substr(6,name.size());
 			thisFilename.append("_");
 			thisFilename.append(name);	
+			thisFilename.append(GetKernelSourceTag(k));
 			thisFilename.append(".bin");
 			free(value);
 
@@ -1163,6 +1183,43 @@ bool BROCCOLI_LIB::SaveProgramBinary(cl_device_id device, std::string filename, 
 	return true;
 }
 
+
+// Returns "_<hash>" of the kernel source file k, so that cached kernel binaries
+// are rebuilt automatically whenever the kernel source changes
+std::string BROCCOLI_LIB::GetKernelSourceTag(int k)
+{
+	std::string path;
+	if (WRAPPER == BASH)
+	{
+		path.append(GetBROCCOLIDirectory());
+	}
+	else
+	{
+		path.append(BROCCOLI_LOCATION);
+	}
+	path.append("code/Kernels/");
+	path.append(kernelFileNames[k]);
+
+	std::ifstream file(path.c_str(), std::ios::in | std::ios::binary);
+	if (!file.good())
+	{
+		return "";
+	}
+	std::ostringstream oss;
+	oss << file.rdbuf();
+	std::string src = oss.str();
+
+	// 64-bit FNV-1a
+	unsigned long long hash = 1469598103934665603ULL;
+	for (size_t i = 0; i < src.size(); i++)
+	{
+		hash ^= (unsigned char)src[i];
+		hash *= 1099511628211ULL;
+	}
+	char buffer[32];
+	snprintf(buffer, sizeof(buffer), "_%016llx", hash);
+	return std::string(buffer);
+}
 
 std::string BROCCOLI_LIB::GetBROCCOLIDirectory()
 {
@@ -1843,6 +1900,21 @@ bool BROCCOLI_LIB::OpenCLInitiate(cl_uint OPENCL_PLATFORM, cl_uint OPENCL_DEVICE
     CalculateStatisticalMapSearchlightKernel = clCreateKernel(OpenCLPrograms[11],"CalculateStatisticalMapSearchlight",&createKernelErrorCalculateStatisticalMapSearchlight);
     
     OpenCLKernels[101] = CalculateStatisticalMapSearchlightKernel;
+
+    // TFCE kernels
+    TFCEInitLabelsKernel = clCreateKernel(OpenCLPrograms[2],"TFCEInitLabels",&createKernelErrorTFCEInitLabels);
+    TFCEMergeLabelsKernel = clCreateKernel(OpenCLPrograms[2],"TFCEMergeLabels",&createKernelErrorTFCEMergeLabels);
+    TFCECompressLabelsKernel = clCreateKernel(OpenCLPrograms[2],"TFCECompressLabels",&createKernelErrorTFCECompressLabels);
+    TFCEClusterSizesKernel = clCreateKernel(OpenCLPrograms[2],"TFCEClusterSizes",&createKernelErrorTFCEClusterSizes);
+    TFCEAccumulateKernel = clCreateKernel(OpenCLPrograms[2],"TFCEAccumulate",&createKernelErrorTFCEAccumulate);
+    TFCEMaxOrderedKeyKernel = clCreateKernel(OpenCLPrograms[2],"TFCEMaxOrderedKey",&createKernelErrorTFCEMaxOrderedKey);
+
+    OpenCLKernels[102] = TFCEInitLabelsKernel;
+    OpenCLKernels[103] = TFCEMergeLabelsKernel;
+    OpenCLKernels[104] = TFCECompressLabelsKernel;
+    OpenCLKernels[105] = TFCEClusterSizesKernel;
+    OpenCLKernels[106] = TFCEAccumulateKernel;
+    OpenCLKernels[107] = TFCEMaxOrderedKeyKernel;
     
 	OPENCL_INITIATED = true;
 
@@ -2191,6 +2263,24 @@ const char* BROCCOLI_LIB::GetOpenCLKernelName(int kernel)
         case 101:
             return "CalculateStatisticalMapSearchlight";
             break;
+        case 102:
+            return "TFCEInitLabels";
+            break;
+        case 103:
+            return "TFCEMergeLabels";
+            break;
+        case 104:
+            return "TFCECompressLabels";
+            break;
+        case 105:
+            return "TFCEClusterSizes";
+            break;
+        case 106:
+            return "TFCEAccumulate";
+            break;
+        case 107:
+            return "TFCEMaxOrderedKey";
+            break;
             
             
 		default:
@@ -2311,6 +2401,12 @@ int* BROCCOLI_LIB::GetOpenCLCreateKernelErrors()
 	OpenCLCreateKernelErrors[100] = createKernelErrorGeneratePermutedVolumesFirstLevel;
     
     OpenCLCreateKernelErrors[101] = createKernelErrorCalculateStatisticalMapSearchlight;
+    OpenCLCreateKernelErrors[102] = createKernelErrorTFCEInitLabels;
+    OpenCLCreateKernelErrors[103] = createKernelErrorTFCEMergeLabels;
+    OpenCLCreateKernelErrors[104] = createKernelErrorTFCECompressLabels;
+    OpenCLCreateKernelErrors[105] = createKernelErrorTFCEClusterSizes;
+    OpenCLCreateKernelErrors[106] = createKernelErrorTFCEAccumulate;
+    OpenCLCreateKernelErrors[107] = createKernelErrorTFCEMaxOrderedKey;
     
 	return OpenCLCreateKernelErrors;
 }
@@ -2428,6 +2524,12 @@ int* BROCCOLI_LIB::GetOpenCLRunKernelErrors()
 	OpenCLRunKernelErrors[100] = runKernelErrorGeneratePermutedVolumesFirstLevel;
     
     OpenCLRunKernelErrors[101] = runKernelErrorCalculateStatisticalMapSearchlight;
+    OpenCLRunKernelErrors[102] = runKernelErrorTFCEInitLabels;
+    OpenCLRunKernelErrors[103] = runKernelErrorTFCEMergeLabels;
+    OpenCLRunKernelErrors[104] = runKernelErrorTFCECompressLabels;
+    OpenCLRunKernelErrors[105] = runKernelErrorTFCEClusterSizes;
+    OpenCLRunKernelErrors[106] = runKernelErrorTFCEAccumulate;
+    OpenCLRunKernelErrors[107] = runKernelErrorTFCEMaxOrderedKey;
     
 	return OpenCLRunKernelErrors;
 }
@@ -3867,6 +3969,19 @@ void BROCCOLI_LIB::SetGroupDesigns(int *designs)
 	GROUP_DESIGNS = designs;
 }
 
+
+void BROCCOLI_LIB::SetTFCEParameters(float H, float E, int connectivity, float delta)
+{
+	TFCE_H = H;
+	TFCE_E = E;
+	TFCE_CONNECTIVITY = connectivity;
+	TFCE_DELTA_OVERRIDE = delta;
+}
+
+void BROCCOLI_LIB::SetOutputTFCEMapsMNI(float* data)
+{
+	h_TFCE_Maps_MNI = data;
+}
 
 void BROCCOLI_LIB::SetInferenceMode(int mode)
 {
@@ -13152,6 +13267,7 @@ void BROCCOLI_LIB::PerformMeanSecondLevelPermutationWrapper()
 	d_Cluster_Indices = clCreateBuffer(context, CL_MEM_READ_WRITE, MNI_DATA_W * MNI_DATA_H * MNI_DATA_D * sizeof(int), NULL, NULL);
 	d_Cluster_Sizes = clCreateBuffer(context, CL_MEM_READ_WRITE, MNI_DATA_W * MNI_DATA_H * MNI_DATA_D * sizeof(int), NULL, NULL);
 	d_TFCE_Values = clCreateBuffer(context, CL_MEM_READ_WRITE, MNI_DATA_W * MNI_DATA_H * MNI_DATA_D * sizeof(float), NULL, NULL);
+	d_TFCE_Observed = clCreateBuffer(context, CL_MEM_READ_WRITE, MNI_DATA_W * MNI_DATA_H * MNI_DATA_D * (NUMBER_OF_CONTRASTS > 0 ? NUMBER_OF_CONTRASTS : 1) * sizeof(float), NULL, NULL);
 
 	// Allocate memory for model
 	c_X_GLM = clCreateBuffer(context, CL_MEM_READ_ONLY, NUMBER_OF_TOTAL_GLM_REGRESSORS * NUMBER_OF_SUBJECTS * sizeof(float), NULL, NULL);
@@ -13204,7 +13320,12 @@ void BROCCOLI_LIB::PerformMeanSecondLevelPermutationWrapper()
 	clReleaseMemObject(d_MNI_Brain_Mask);
 	clReleaseMemObject(d_Cluster_Indices);
 	clReleaseMemObject(d_Cluster_Sizes);
+	if ( (INFERENCE_MODE == TFCE) && (h_TFCE_Maps_MNI != NULL) )
+	{
+		clEnqueueReadBuffer(commandQueue, d_TFCE_Observed, CL_TRUE, 0, MNI_DATA_W * MNI_DATA_H * MNI_DATA_D * NUMBER_OF_STATISTICAL_MAPS * sizeof(float), h_TFCE_Maps_MNI, 0, NULL, NULL);
+	}
 	clReleaseMemObject(d_TFCE_Values);
+	clReleaseMemObject(d_TFCE_Observed);
 
 	clReleaseMemObject(c_X_GLM);
 	clReleaseMemObject(c_xtxxt_GLM);
@@ -13232,6 +13353,7 @@ void BROCCOLI_LIB::PerformGLMTTestSecondLevelPermutationWrapper()
 	d_Cluster_Indices = clCreateBuffer(context, CL_MEM_READ_WRITE, MNI_DATA_W * MNI_DATA_H * MNI_DATA_D * sizeof(int), NULL, NULL);
 	d_Cluster_Sizes = clCreateBuffer(context, CL_MEM_READ_WRITE, MNI_DATA_W * MNI_DATA_H * MNI_DATA_D * sizeof(int), NULL, NULL);
 	d_TFCE_Values = clCreateBuffer(context, CL_MEM_READ_WRITE, MNI_DATA_W * MNI_DATA_H * MNI_DATA_D * sizeof(float), NULL, NULL);
+	d_TFCE_Observed = clCreateBuffer(context, CL_MEM_READ_WRITE, MNI_DATA_W * MNI_DATA_H * MNI_DATA_D * (NUMBER_OF_CONTRASTS > 0 ? NUMBER_OF_CONTRASTS : 1) * sizeof(float), NULL, NULL);
 
 	// Allocate memory for model
 	c_X_GLM = clCreateBuffer(context, CL_MEM_READ_ONLY, NUMBER_OF_TOTAL_GLM_REGRESSORS * NUMBER_OF_SUBJECTS * sizeof(float), NULL, NULL);
@@ -13281,7 +13403,12 @@ void BROCCOLI_LIB::PerformGLMTTestSecondLevelPermutationWrapper()
 	clReleaseMemObject(d_MNI_Brain_Mask);
 	clReleaseMemObject(d_Cluster_Indices);
 	clReleaseMemObject(d_Cluster_Sizes);
+	if ( (INFERENCE_MODE == TFCE) && (h_TFCE_Maps_MNI != NULL) )
+	{
+		clEnqueueReadBuffer(commandQueue, d_TFCE_Observed, CL_TRUE, 0, MNI_DATA_W * MNI_DATA_H * MNI_DATA_D * NUMBER_OF_STATISTICAL_MAPS * sizeof(float), h_TFCE_Maps_MNI, 0, NULL, NULL);
+	}
 	clReleaseMemObject(d_TFCE_Values);
+	clReleaseMemObject(d_TFCE_Observed);
 
 	clReleaseMemObject(c_X_GLM);
 	clReleaseMemObject(c_xtxxt_GLM);
@@ -13310,6 +13437,7 @@ void BROCCOLI_LIB::PerformGLMFTestSecondLevelPermutationWrapper()
 	d_Cluster_Indices = clCreateBuffer(context, CL_MEM_READ_WRITE, MNI_DATA_W * MNI_DATA_H * MNI_DATA_D * sizeof(int), NULL, NULL);
 	d_Cluster_Sizes = clCreateBuffer(context, CL_MEM_READ_WRITE, MNI_DATA_W * MNI_DATA_H * MNI_DATA_D * sizeof(int), NULL, NULL);
 	d_TFCE_Values = clCreateBuffer(context, CL_MEM_READ_WRITE, MNI_DATA_W * MNI_DATA_H * MNI_DATA_D * sizeof(float), NULL, NULL);
+	d_TFCE_Observed = clCreateBuffer(context, CL_MEM_READ_WRITE, MNI_DATA_W * MNI_DATA_H * MNI_DATA_D * (NUMBER_OF_CONTRASTS > 0 ? NUMBER_OF_CONTRASTS : 1) * sizeof(float), NULL, NULL);
 
 	// Allocate memory for model
 	c_X_GLM = clCreateBuffer(context, CL_MEM_READ_ONLY, NUMBER_OF_TOTAL_GLM_REGRESSORS * NUMBER_OF_SUBJECTS * sizeof(float), NULL, NULL);
@@ -13360,7 +13488,12 @@ void BROCCOLI_LIB::PerformGLMFTestSecondLevelPermutationWrapper()
 	clReleaseMemObject(d_MNI_Brain_Mask);
 	clReleaseMemObject(d_Cluster_Indices);
 	clReleaseMemObject(d_Cluster_Sizes);
+	if ( (INFERENCE_MODE == TFCE) && (h_TFCE_Maps_MNI != NULL) )
+	{
+		clEnqueueReadBuffer(commandQueue, d_TFCE_Observed, CL_TRUE, 0, MNI_DATA_W * MNI_DATA_H * MNI_DATA_D * NUMBER_OF_STATISTICAL_MAPS * sizeof(float), h_TFCE_Maps_MNI, 0, NULL, NULL);
+	}
 	clReleaseMemObject(d_TFCE_Values);
+	clReleaseMemObject(d_TFCE_Observed);
 
 	clReleaseMemObject(c_X_GLM);
 	clReleaseMemObject(c_xtxxt_GLM);
@@ -16605,6 +16738,8 @@ void BROCCOLI_LIB::ApplyPermutationTestSecondLevel()
     // Setup parameters and memory prior to permutations, to save time in each permutation
     SetupPermutationTestSecondLevel(d_First_Level_Results, d_MNI_Brain_Mask);
 
+    TFCE_DELTAS.assign(NUMBER_OF_STATISTICAL_MAPS, 0.0f);
+
 	// Generate a random sign matrix, unless one is provided
     if ( (STATISTICAL_TEST == GROUP_MEAN) && (!USE_PERMUTATION_FILE) )
     {
@@ -16756,10 +16891,42 @@ void BROCCOLI_LIB::ApplyPermutationTestSecondLevel()
             // Threshold free cluster enhancement
             else if (INFERENCE_MODE == TFCE)
             {
-                maxActivation = CalculateMaxAtomic(d_Statistical_Maps, d_MNI_Brain_Mask, MNI_DATA_W, MNI_DATA_H, MNI_DATA_D);
-                float delta = 0.2846;
-                ClusterizeOpenCLTFCEPermutation(MAX_VALUE, d_MNI_Brain_Mask, MNI_DATA_W, MNI_DATA_H, MNI_DATA_D, maxActivation, delta);
-                h_Permutation_Distribution[p] = MAX_VALUE;
+                // The second level permutation kernels always write the current map to slot 0
+                int statisticalMap = 0;
+                size_t N = (size_t)MNI_DATA_W * MNI_DATA_H * MNI_DATA_D;
+
+                // As in FSL randomise, permutation 0 is the unpermuted design. Its maximum defines the
+                // TFCE step (max/100, computed in double and stored as float), reused for all permutations.
+                if (p == 0)
+                {
+                    if (TFCE_DELTA_OVERRIDE > 0.0f)
+                    {
+                        TFCE_DELTAS[c] = TFCE_DELTA_OVERRIDE;
+                    }
+                    else
+                    {
+                        float maxStat = CalculateMaxExact(d_Statistical_Maps, d_MNI_Brain_Mask, statisticalMap, MNI_DATA_W, MNI_DATA_H, MNI_DATA_D);
+                        TFCE_DELTAS[c] = (float)((double)maxStat / 100.0);
+                        if ( (TFCE_DELTAS[c] <= 0.0f) && (WRAPPER == BASH) )
+                        {
+                            printf("Warning: the unpermuted statistic image for contrast %zu contains no positive values, TFCE output will be blank.\n", c+1);
+                        }
+                    }
+                    if ( (WRAPPER == BASH) && VERBOS )
+                    {
+                        printf("TFCE step size for contrast %zu is %f \n", c+1, TFCE_DELTAS[c]);
+                    }
+                }
+
+                CalculateTFCEMap(d_Statistical_Maps, d_MNI_Brain_Mask, statisticalMap, TFCE_DELTAS[c], MNI_DATA_W, MNI_DATA_H, MNI_DATA_D);
+                h_Permutation_Distribution[p] = CalculateMaxExact(d_TFCE_Values, d_MNI_Brain_Mask, 0, MNI_DATA_W, MNI_DATA_H, MNI_DATA_D);
+
+                // Keep the TFCE map of the unpermuted design, it is the observed statistic
+                if (p == 0)
+                {
+                    clEnqueueCopyBuffer(commandQueue, d_TFCE_Values, d_TFCE_Observed, 0, c * N * sizeof(float), N * sizeof(float), 0, NULL, NULL);
+                    clFinish(commandQueue);
+                }
             }
         }
    
@@ -16825,7 +16992,14 @@ void BROCCOLI_LIB::CalculatePermutationPValues(cl_mem d_Mask, int DATA_W, int DA
 		if ( (INFERENCE_MODE == VOXEL) || (INFERENCE_MODE == TFCE) )
 		{
 			clSetKernelArg(CalculatePermutationPValuesVoxelLevelInferenceKernel, 0, sizeof(cl_mem), &d_P_Values);
-			clSetKernelArg(CalculatePermutationPValuesVoxelLevelInferenceKernel, 1, sizeof(cl_mem), &d_Statistical_Maps);
+			if (INFERENCE_MODE == TFCE)
+			{
+				clSetKernelArg(CalculatePermutationPValuesVoxelLevelInferenceKernel, 1, sizeof(cl_mem), &d_TFCE_Observed);
+			}
+			else
+			{
+				clSetKernelArg(CalculatePermutationPValuesVoxelLevelInferenceKernel, 1, sizeof(cl_mem), &d_Statistical_Maps);
+			}
 			clSetKernelArg(CalculatePermutationPValuesVoxelLevelInferenceKernel, 2, sizeof(cl_mem), &d_Mask);
 			clSetKernelArg(CalculatePermutationPValuesVoxelLevelInferenceKernel, 3, sizeof(cl_mem), &c_Permutation_Distribution);
 			clSetKernelArg(CalculatePermutationPValuesVoxelLevelInferenceKernel, 4, sizeof(int),    &contrast);
@@ -18461,6 +18635,133 @@ void BROCCOLI_LIB::ClusterizeOpenCLPermutation(float& MAX_CLUSTER, int DATA_W, i
 	}
 }
 
+
+// Exact maximum of volume 'contrast' of d_Volumes inside the mask (no quantisation, works for negative values)
+float BROCCOLI_LIB::CalculateMaxExact(cl_mem d_Volumes, cl_mem d_Mask, int contrast, int DATA_W, int DATA_H, int DATA_D)
+{
+	size_t N = (size_t)DATA_W * DATA_H * DATA_D;
+	size_t localWorkSize[1] = {256};
+	size_t globalWorkSize[1] = {((N + 255) / 256) * 256};
+
+	unsigned int zeroKey = 0;
+	cl_mem d_Max_Key = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(unsigned int), &zeroKey, NULL);
+
+	clSetKernelArg(TFCEMaxOrderedKeyKernel, 0, sizeof(cl_mem), &d_Max_Key);
+	clSetKernelArg(TFCEMaxOrderedKeyKernel, 1, sizeof(cl_mem), &d_Volumes);
+	clSetKernelArg(TFCEMaxOrderedKeyKernel, 2, sizeof(cl_mem), &d_Mask);
+	clSetKernelArg(TFCEMaxOrderedKeyKernel, 3, sizeof(int),    &contrast);
+	clSetKernelArg(TFCEMaxOrderedKeyKernel, 4, sizeof(int),    &DATA_W);
+	clSetKernelArg(TFCEMaxOrderedKeyKernel, 5, sizeof(int),    &DATA_H);
+	clSetKernelArg(TFCEMaxOrderedKeyKernel, 6, sizeof(int),    &DATA_D);
+	runKernelErrorTFCEMaxOrderedKey = clEnqueueNDRangeKernel(commandQueue, TFCEMaxOrderedKeyKernel, 1, NULL, globalWorkSize, localWorkSize, 0, NULL, NULL);
+
+	unsigned int key;
+	clEnqueueReadBuffer(commandQueue, d_Max_Key, CL_TRUE, 0, sizeof(unsigned int), &key, 0, NULL, NULL);
+	clReleaseMemObject(d_Max_Key);
+
+	if (key == 0)
+	{
+		// Empty mask
+		return 0.0f;
+	}
+
+	unsigned int u = (key & 0x80000000u) ? (key & 0x7FFFFFFFu) : ~key;
+	float value;
+	memcpy(&value, &u, sizeof(float));
+	return value;
+}
+
+// TFCE of volume 'contrast' of d_Volumes, result in d_TFCE_Values (DATA_W x DATA_H x DATA_D).
+// Reproduces FSL newimage tfce(): thresholds h = 0, delta, 2*delta, ... while h < max + delta
+// (accumulated in single precision), each adding size^E * h^H to the voxels of every cluster.
+// Uses d_Cluster_Indices as labels and d_Cluster_Sizes as cluster sizes.
+void BROCCOLI_LIB::CalculateTFCEMap(cl_mem d_Volumes, cl_mem d_Mask, int contrast, float delta, int DATA_W, int DATA_H, int DATA_D)
+{
+	size_t N = (size_t)DATA_W * DATA_H * DATA_D;
+	SetMemory(d_TFCE_Values, 0.0f, N);
+
+	if (delta <= 0.0f)
+	{
+		return;
+	}
+
+	// FSL takes the maximum over the whole volume, where voxels outside the mask are 0
+	float maxT = CalculateMaxExact(d_Volumes, d_Mask, contrast, DATA_W, DATA_H, DATA_D);
+	if (maxT < 0.0f)
+	{
+		maxT = 0.0f;
+	}
+
+	size_t localWorkSize[1] = {256};
+	size_t globalWorkSize[1] = {((N + 255) / 256) * 256};
+
+	int maxSquaredDistance = 1;
+	if (TFCE_CONNECTIVITY == 18)
+	{
+		maxSquaredDistance = 2;
+	}
+	else if (TFCE_CONNECTIVITY == 26)
+	{
+		maxSquaredDistance = 3;
+	}
+
+	clSetKernelArg(TFCEInitLabelsKernel, 0, sizeof(cl_mem), &d_Cluster_Indices);
+	clSetKernelArg(TFCEInitLabelsKernel, 1, sizeof(cl_mem), &d_Cluster_Sizes);
+	clSetKernelArg(TFCEInitLabelsKernel, 2, sizeof(cl_mem), &d_Volumes);
+	clSetKernelArg(TFCEInitLabelsKernel, 3, sizeof(cl_mem), &d_Mask);
+	clSetKernelArg(TFCEInitLabelsKernel, 5, sizeof(int),    &contrast);
+	clSetKernelArg(TFCEInitLabelsKernel, 6, sizeof(int),    &DATA_W);
+	clSetKernelArg(TFCEInitLabelsKernel, 7, sizeof(int),    &DATA_H);
+	clSetKernelArg(TFCEInitLabelsKernel, 8, sizeof(int),    &DATA_D);
+
+	clSetKernelArg(TFCEMergeLabelsKernel, 0, sizeof(cl_mem), &d_Cluster_Indices);
+	clSetKernelArg(TFCEMergeLabelsKernel, 1, sizeof(int),    &maxSquaredDistance);
+	clSetKernelArg(TFCEMergeLabelsKernel, 2, sizeof(int),    &DATA_W);
+	clSetKernelArg(TFCEMergeLabelsKernel, 3, sizeof(int),    &DATA_H);
+	clSetKernelArg(TFCEMergeLabelsKernel, 4, sizeof(int),    &DATA_D);
+
+	clSetKernelArg(TFCECompressLabelsKernel, 0, sizeof(cl_mem), &d_Cluster_Indices);
+	clSetKernelArg(TFCECompressLabelsKernel, 1, sizeof(int),    &DATA_W);
+	clSetKernelArg(TFCECompressLabelsKernel, 2, sizeof(int),    &DATA_H);
+	clSetKernelArg(TFCECompressLabelsKernel, 3, sizeof(int),    &DATA_D);
+
+	clSetKernelArg(TFCEClusterSizesKernel, 0, sizeof(cl_mem), &d_Cluster_Indices);
+	clSetKernelArg(TFCEClusterSizesKernel, 1, sizeof(cl_mem), &d_Cluster_Sizes);
+	clSetKernelArg(TFCEClusterSizesKernel, 2, sizeof(int),    &DATA_W);
+	clSetKernelArg(TFCEClusterSizesKernel, 3, sizeof(int),    &DATA_H);
+	clSetKernelArg(TFCEClusterSizesKernel, 4, sizeof(int),    &DATA_D);
+
+	clSetKernelArg(TFCEAccumulateKernel, 0, sizeof(cl_mem), &d_TFCE_Values);
+	clSetKernelArg(TFCEAccumulateKernel, 1, sizeof(cl_mem), &d_Cluster_Indices);
+	clSetKernelArg(TFCEAccumulateKernel, 2, sizeof(cl_mem), &d_Cluster_Sizes);
+	clSetKernelArg(TFCEAccumulateKernel, 3, sizeof(float),  &TFCE_E);
+	clSetKernelArg(TFCEAccumulateKernel, 5, sizeof(int),    &DATA_W);
+	clSetKernelArg(TFCEAccumulateKernel, 6, sizeof(int),    &DATA_H);
+	clSetKernelArg(TFCEAccumulateKernel, 7, sizeof(int),    &DATA_D);
+
+	// volatile keeps the threshold in single precision, exactly like FSL's float loop
+	volatile float limit = maxT + delta;
+	for (volatile float threshold = 0.0f; threshold < limit; threshold = threshold + delta)
+	{
+		float h = threshold;
+		float heightTerm = powf(h, TFCE_H);
+		if (heightTerm == 0.0f)
+		{
+			// h = 0 contributes nothing
+			continue;
+		}
+
+		clSetKernelArg(TFCEInitLabelsKernel, 4, sizeof(float), &h);
+		clSetKernelArg(TFCEAccumulateKernel, 4, sizeof(float), &heightTerm);
+
+		runKernelErrorTFCEInitLabels = clEnqueueNDRangeKernel(commandQueue, TFCEInitLabelsKernel, 1, NULL, globalWorkSize, localWorkSize, 0, NULL, NULL);
+		runKernelErrorTFCEMergeLabels = clEnqueueNDRangeKernel(commandQueue, TFCEMergeLabelsKernel, 1, NULL, globalWorkSize, localWorkSize, 0, NULL, NULL);
+		runKernelErrorTFCECompressLabels = clEnqueueNDRangeKernel(commandQueue, TFCECompressLabelsKernel, 1, NULL, globalWorkSize, localWorkSize, 0, NULL, NULL);
+		runKernelErrorTFCEClusterSizes = clEnqueueNDRangeKernel(commandQueue, TFCEClusterSizesKernel, 1, NULL, globalWorkSize, localWorkSize, 0, NULL, NULL);
+		runKernelErrorTFCEAccumulate = clEnqueueNDRangeKernel(commandQueue, TFCEAccumulateKernel, 1, NULL, globalWorkSize, localWorkSize, 0, NULL, NULL);
+	}
+	clFinish(commandQueue);
+}
 
 void BROCCOLI_LIB::ClusterizeOpenCLTFCEPermutation(float& MAX_VALUE, cl_mem d_Mask, int DATA_W, int DATA_H, int DATA_D, float maxThreshold, float delta)
 {

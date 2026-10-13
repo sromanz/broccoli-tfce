@@ -655,3 +655,218 @@ __kernel void CalculatePermutationPValuesClusterMassInference(__global float* P_
 
 
 
+
+
+// ---------------------------------------------------------------------------------------
+// Threshold-free cluster enhancement (TFCE), FSL randomise compatible
+//
+// One threshold h is processed with five 1D launches over all voxels:
+//   TFCEInitLabels -> TFCEMergeLabels -> TFCECompressLabels -> TFCEClusterSizes -> TFCEAccumulate
+// Connected components use union-find with atomic_min (Playne & Hawick 2018), so no iterative
+// relabelling and no host synchronisation is needed between thresholds.
+// FSL semantics: a voxel is suprathreshold if value > h, only voxels inside the mask and not on
+// the outermost layer of the volume take part, cluster size is a voxel count, and each step adds
+// size^E * h^H (not multiplied by the step size).
+// ---------------------------------------------------------------------------------------
+
+#define TFCE_INVALID_LABEL 0xFFFFFFFFu
+
+unsigned int TFCEFind(volatile __global unsigned int* Labels, unsigned int x)
+{
+	unsigned int parent = Labels[x];
+	while (parent != x)
+	{
+		x = parent;
+		parent = Labels[x];
+	}
+	return x;
+}
+
+void TFCEUnion(volatile __global unsigned int* Labels, unsigned int a, unsigned int b)
+{
+	bool done = false;
+	while (!done)
+	{
+		a = TFCEFind(Labels, a);
+		b = TFCEFind(Labels, b);
+		if (a < b)
+		{
+			unsigned int old = atomic_min(&Labels[b], a);
+			done = (old == b);
+			b = old;
+		}
+		else if (b < a)
+		{
+			unsigned int old = atomic_min(&Labels[a], b);
+			done = (old == a);
+			a = old;
+		}
+		else
+		{
+			done = true;
+		}
+	}
+}
+
+__kernel void TFCEInitLabels(__global unsigned int* Labels,
+							 __global unsigned int* Cluster_Sizes,
+							 __global const float* Data,
+							 __global const float* Mask,
+							 __private float threshold,
+							 __private int contrast,
+							 __private int DATA_W,
+							 __private int DATA_H,
+							 __private int DATA_D)
+{
+	int idx = get_global_id(0);
+	int N = DATA_W * DATA_H * DATA_D;
+	if (idx >= N)
+		return;
+
+	Cluster_Sizes[idx] = 0;
+
+	int x = idx % DATA_W;
+	int y = (idx / DATA_W) % DATA_H;
+	int z = idx / (DATA_W * DATA_H);
+
+	bool interior = (x > 0) && (x < DATA_W - 1) && (y > 0) && (y < DATA_H - 1) && (z > 0) && (z < DATA_D - 1);
+
+	if ( interior && (Mask[idx] == 1.0f) && (Data[idx + contrast * N] > threshold) )
+	{
+		Labels[idx] = (unsigned int)idx;
+	}
+	else
+	{
+		Labels[idx] = TFCE_INVALID_LABEL;
+	}
+}
+
+// MAX_SQUARED_DISTANCE = 1 for 6-connectivity, 2 for 18-connectivity, 3 for 26-connectivity
+__kernel void TFCEMergeLabels(volatile __global unsigned int* Labels,
+							  __private int MAX_SQUARED_DISTANCE,
+							  __private int DATA_W,
+							  __private int DATA_H,
+							  __private int DATA_D)
+{
+	int idx = get_global_id(0);
+	if (idx >= DATA_W * DATA_H * DATA_D)
+		return;
+
+	if (Labels[idx] == TFCE_INVALID_LABEL)
+		return;
+
+	// Only active voxels are interior, so all neighbours are inside the volume.
+	// Only the "backward" half of the neighbourhood is visited, each pair is merged once.
+	for (int dz = -1; dz <= 0; dz++)
+	{
+		for (int dy = -1; dy <= 1; dy++)
+		{
+			for (int dx = -1; dx <= 1; dx++)
+			{
+				if ( (dz == 0) && ( (dy > 0) || ((dy == 0) && (dx >= 0)) ) )
+					continue;
+
+				int d2 = dx * dx + dy * dy + dz * dz;
+				if (d2 > MAX_SQUARED_DISTANCE)
+					continue;
+
+				int neighbour = idx + dx + dy * DATA_W + dz * DATA_W * DATA_H;
+				if (Labels[neighbour] != TFCE_INVALID_LABEL)
+				{
+					TFCEUnion(Labels, (unsigned int)idx, (unsigned int)neighbour);
+				}
+			}
+		}
+	}
+}
+
+__kernel void TFCECompressLabels(volatile __global unsigned int* Labels,
+								 __private int DATA_W,
+								 __private int DATA_H,
+								 __private int DATA_D)
+{
+	int idx = get_global_id(0);
+	if (idx >= DATA_W * DATA_H * DATA_D)
+		return;
+
+	if (Labels[idx] == TFCE_INVALID_LABEL)
+		return;
+
+	Labels[idx] = TFCEFind(Labels, (unsigned int)idx);
+}
+
+__kernel void TFCEClusterSizes(__global const unsigned int* Labels,
+							   volatile __global unsigned int* Cluster_Sizes,
+							   __private int DATA_W,
+							   __private int DATA_H,
+							   __private int DATA_D)
+{
+	int idx = get_global_id(0);
+	if (idx >= DATA_W * DATA_H * DATA_D)
+		return;
+
+	unsigned int label = Labels[idx];
+	if (label == TFCE_INVALID_LABEL)
+		return;
+
+	atomic_inc(&Cluster_Sizes[label]);
+}
+
+// HEIGHT_TERM = h^H (computed on the host in single precision, as FSL does)
+__kernel void TFCEAccumulate(__global float* TFCE_Values,
+							 __global const unsigned int* Labels,
+							 __global const unsigned int* Cluster_Sizes,
+							 __private float E,
+							 __private float HEIGHT_TERM,
+							 __private int DATA_W,
+							 __private int DATA_H,
+							 __private int DATA_D)
+{
+	int idx = get_global_id(0);
+	if (idx >= DATA_W * DATA_H * DATA_D)
+		return;
+
+	unsigned int label = Labels[idx];
+	if (label == TFCE_INVALID_LABEL)
+		return;
+
+	float size = (float)Cluster_Sizes[label];
+	float extentTerm;
+	if (E == 0.5f)
+	{
+		extentTerm = sqrt(size);
+	}
+	else if (E == 1.0f)
+	{
+		extentTerm = size;
+	}
+	else
+	{
+		extentTerm = pow(size, E);
+	}
+
+	TFCE_Values[idx] += extentTerm * HEIGHT_TERM;
+}
+
+// Exact maximum of a float volume inside a mask. Floats are mapped to order-preserving unsigned
+// keys so that atomic_max can be used; the host decodes the key (see DecodeOrderedFloatKey).
+__kernel void TFCEMaxOrderedKey(volatile __global unsigned int* Max_Key,
+								__global const float* Volume,
+								__global const float* Mask,
+								__private int contrast,
+								__private int DATA_W,
+								__private int DATA_H,
+								__private int DATA_D)
+{
+	int idx = get_global_id(0);
+	int N = DATA_W * DATA_H * DATA_D;
+	if (idx >= N)
+		return;
+
+	if (Mask[idx] != 1.0f)
+		return;
+
+	unsigned int u = as_uint(Volume[idx + contrast * N]);
+	unsigned int key = (u & 0x80000000u) ? ~u : (u | 0x80000000u);
+	atomic_max(Max_Key, key);
+}

@@ -157,6 +157,9 @@ class BROCCOLI_LIB
 		void SetStatisticalTest(int test);
 		void SetGroupDesigns(int *designs);
 		void SetInferenceMode(int mode);
+		// TFCE parameters (FSL randomise defaults: H = 2, E = 0.5, connectivity = 6, delta = 0 means max(unpermuted stat)/100)
+		void SetTFCEParameters(float H, float E, int connectivity, float delta);
+		void SetOutputTFCEMapsMNI(float* output);
 		void SetClusterDefiningThreshold(float threshold);
 		void SetPermutationMatrix(unsigned short int*);
 		void SetPermutationMatrices(unsigned short int**);
@@ -469,6 +472,7 @@ class BROCCOLI_LIB
 	private:
 
 		std::string GetBROCCOLIDirectory();
+		std::string GetKernelSourceTag(int k);
 
 		void CreateCombinedDisplacementField(float* h_Registration_Parameters, cl_mem d_Displacement_Field_X, cl_mem d_Displacement_Field_Y, cl_mem d_Displacement_Field_Z, size_t DATA_W, size_t DATA_H, size_t DATA_D);
 
@@ -478,6 +482,8 @@ class BROCCOLI_LIB
 		void ClusterizeOpenCLTFCE(float& MAX_VALUE, cl_mem d_Mask, int DATA_W, int DATA_H, int DATA_D, float maxThreshold);
 		void ClusterizeOpenCLPermutation(float& MAX_CLUSTER, int DATA_W, int DATA_H, int DATA_D);
 		void ClusterizeOpenCLTFCEPermutation(float& MAX_VALUE, cl_mem d_Mask, int DATA_W, int DATA_H, int DATA_D, float maxThreshold, float delta);
+		void CalculateTFCEMap(cl_mem d_Volumes, cl_mem d_Mask, int contrast, float delta, int DATA_W, int DATA_H, int DATA_D);
+		float CalculateMaxExact(cl_mem d_Volumes, cl_mem d_Mask, int contrast, int DATA_W, int DATA_H, int DATA_D);
 
 		//------------------------------------------------
 		// High level functions
@@ -863,6 +869,12 @@ class BROCCOLI_LIB
 		cl_kernel CalculateStatisticalMapsGLMTTestFirstLevelPermutationKernel,CalculateStatisticalMapsGLMFTestFirstLevelPermutationKernel;
 		cl_kernel CalculateStatisticalMapsMeanSecondLevelPermutationKernel, CalculateStatisticalMapsGLMTTestSecondLevelPermutationKernel,CalculateStatisticalMapsGLMFTestSecondLevelPermutationKernel;
 		cl_kernel CalculateStatisticalMapSearchlightKernel;
+		cl_kernel TFCEInitLabelsKernel;
+		cl_kernel TFCEMergeLabelsKernel;
+		cl_kernel TFCECompressLabelsKernel;
+		cl_kernel TFCEClusterSizesKernel;
+		cl_kernel TFCEAccumulateKernel;
+		cl_kernel TFCEMaxOrderedKeyKernel;
         cl_kernel RemoveLinearFitKernel, RemoveLinearFitSliceKernel;
 		cl_kernel EstimateAR4ModelsKernel, EstimateAR4ModelsSliceKernel, ApplyWhiteningAR4Kernel, ApplyWhiteningAR4SliceKernel, GeneratePermutedVolumesFirstLevelKernel;
 		cl_kernel CalculatePermutationPValuesVoxelLevelInferenceKernel, CalculatePermutationPValuesClusterExtentInferenceKernel, CalculatePermutationPValuesClusterMassInferenceKernel;
@@ -936,6 +948,12 @@ class BROCCOLI_LIB
 		cl_int createKernelErrorCalculateStatisticalMapsGLMTTestFirstLevelPermutation, createKernelErrorCalculateStatisticalMapsGLMFTestFirstLevelPermutation;
 		cl_int createKernelErrorCalculateStatisticalMapsMeanSecondLevelPermutation, createKernelErrorCalculateStatisticalMapsGLMTTestSecondLevelPermutation, createKernelErrorCalculateStatisticalMapsGLMFTestSecondLevelPermutation;
         cl_int createKernelErrorCalculateStatisticalMapSearchlight;
+        cl_int createKernelErrorTFCEInitLabels;
+        cl_int createKernelErrorTFCEMergeLabels;
+        cl_int createKernelErrorTFCECompressLabels;
+        cl_int createKernelErrorTFCEClusterSizes;
+        cl_int createKernelErrorTFCEAccumulate;
+        cl_int createKernelErrorTFCEMaxOrderedKey;
         cl_int createKernelErrorEstimateAR4Models, createKernelErrorEstimateAR4ModelsSlice, createKernelErrorApplyWhiteningAR4, createKernelErrorApplyWhiteningAR4Slice;
 		cl_int createKernelErrorGeneratePermutedVolumesFirstLevel;
 		cl_int createKernelErrorRemoveLinearFit, createKernelErrorRemoveLinearFitSlice;
@@ -1033,6 +1051,12 @@ class BROCCOLI_LIB
 		cl_int runKernelErrorCalculateStatisticalMapsGLMTTestFirstLevelPermutation, runKernelErrorCalculateStatisticalMapsGLMFTestFirstLevelPermutation;
 		cl_int runKernelErrorCalculateStatisticalMapsMeanSecondLevelPermutation, runKernelErrorCalculateStatisticalMapsGLMTTestSecondLevelPermutation, runKernelErrorCalculateStatisticalMapsGLMFTestSecondLevelPermutation;
         cl_int runKernelErrorCalculateStatisticalMapSearchlight;
+        cl_int runKernelErrorTFCEInitLabels;
+        cl_int runKernelErrorTFCEMergeLabels;
+        cl_int runKernelErrorTFCECompressLabels;
+        cl_int runKernelErrorTFCEClusterSizes;
+        cl_int runKernelErrorTFCEAccumulate;
+        cl_int runKernelErrorTFCEMaxOrderedKey;
         cl_int runKernelErrorEstimateAR4Models, runKernelErrorEstimateAR4ModelsSlice, runKernelErrorApplyWhiteningAR4, runKernelErrorApplyWhiteningAR4Slice;
 		cl_int runKernelErrorGeneratePermutedVolumesFirstLevel;
 		cl_int runKernelErrorRemoveLinearFit, runKernelErrorRemoveLinearFitSlice;
@@ -1403,6 +1427,11 @@ class BROCCOLI_LIB
 		cl_mem		 d_Largest_Cluster;
 		cl_mem		 d_Updated;
 		cl_mem		d_TFCE_Values;
+		cl_mem		d_TFCE_Observed;
+		float		TFCE_H, TFCE_E, TFCE_DELTA_OVERRIDE;
+		int			TFCE_CONNECTIVITY;
+		std::vector<float> TFCE_DELTAS;
+		float		*h_TFCE_Maps_MNI;
 		int		*h_Cluster_Sizes;
 		float		*h_Whitened_Models;
 

@@ -58,7 +58,7 @@ int main(int argc, char **argv)
     
     int             *h_Cluster_Indices, *h_Cluster_Indices_Out;
     float           **h_Permutation_Distributions, *h_Permutation_Distribution;
-    float           *h_Beta_Volumes, *h_Residuals, *h_Residual_Variances, *h_Statistical_Maps, *h_P_Values;        
+    float           *h_Beta_Volumes, *h_Residuals, *h_Residual_Variances, *h_Statistical_Maps, *h_P_Values, *h_TFCE_Maps = NULL;        
     float           *h_Permuted_First_Level_Results;
 
 	//--------------
@@ -99,6 +99,11 @@ int main(int argc, char **argv)
 	float			SIGNIFICANCE_LEVEL = 0.05f;
 	int				STATISTICAL_TEST = 0;
 	int				INFERENCE_MODE = 1;
+	float			TFCE_H = 2.0f;
+	float			TFCE_E = 0.5f;
+	int				TFCE_C = 6;
+	float			TFCE_D = 0.0f;
+	bool			TFCE_2D = false;
 	bool			MASK = false;
 	const char*		MASK_NAME;
 	const char*		DESIGN_FILE;        
@@ -161,6 +166,11 @@ int main(int argc, char **argv)
         printf(" -teststatistics            Test statistics to use, 0 = GLM t-test, 1 = GLM F-test  (default 0) \n");
         printf(" -inferencemode             Inference mode to use, 0 = voxel, 1 = cluster extent, 2 = cluster mass, 3 = TFCE (default 1) \n");
         printf(" -cdt                       Cluster defining threshold for cluster inference (default 2.5) \n");
+        printf(" -tfceH                     TFCE height parameter H (default 2, as FSL randomise -T) \n");
+        printf(" -tfceE                     TFCE extent parameter E (default 0.5) \n");
+        printf(" -tfceC                     TFCE connectivity, 6, 18 or 26 (default 6) \n");
+        printf(" -tfceD                     TFCE step size override (default: max of unpermuted statistic / 100) \n");
+        printf(" -T2                        TFCE for 2D/skeleton data (TBSS), sets inference mode 3, H = 2, E = 1, C = 26 (as FSL --T2) \n");
         printf(" -significance              The significance level to calculate the threshold for (default 0.05) \n");		
 		printf(" -output                    Set output filename (default volumes_perm_tvalues.nii and volumes_perm_pvalues.nii) \n");
 		printf(" -writepermutationvalues    Write all the permutation values to a text file \n");
@@ -342,11 +352,79 @@ int main(int argc, char **argv)
             }
             i += 2;
 
-			if (INFERENCE_MODE == 3)
+        }
+        else if (strcmp(input,"-tfceH") == 0)
+        {
+			if ( (i+1) >= argc  )
 			{
-				printf("TFCE is currently turned off!\n");
-    	        return EXIT_FAILURE;
+			    printf("Unable to read value after -tfceH !\n");
+                return EXIT_FAILURE;
 			}
+
+            TFCE_H = (float)strtod(argv[i+1], &p);
+
+			if (!isspace(*p) && *p != 0)
+		    {
+		        printf("TFCE height parameter must be a float! You provided %s \n",argv[i+1]);
+				return EXIT_FAILURE;
+		    }
+            i += 2;
+        }
+        else if (strcmp(input,"-tfceE") == 0)
+        {
+			if ( (i+1) >= argc  )
+			{
+			    printf("Unable to read value after -tfceE !\n");
+                return EXIT_FAILURE;
+			}
+
+            TFCE_E = (float)strtod(argv[i+1], &p);
+
+			if (!isspace(*p) && *p != 0)
+		    {
+		        printf("TFCE extent parameter must be a float! You provided %s \n",argv[i+1]);
+				return EXIT_FAILURE;
+		    }
+            i += 2;
+        }
+        else if (strcmp(input,"-tfceD") == 0)
+        {
+			if ( (i+1) >= argc  )
+			{
+			    printf("Unable to read value after -tfceD !\n");
+                return EXIT_FAILURE;
+			}
+
+            TFCE_D = (float)strtod(argv[i+1], &p);
+
+			if (!isspace(*p) && *p != 0)
+		    {
+		        printf("TFCE step size must be a float! You provided %s \n",argv[i+1]);
+				return EXIT_FAILURE;
+		    }
+            i += 2;
+        }
+        else if (strcmp(input,"-tfceC") == 0)
+        {
+			if ( (i+1) >= argc  )
+			{
+			    printf("Unable to read value after -tfceC !\n");
+                return EXIT_FAILURE;
+			}
+
+            TFCE_C = (int)strtol(argv[i+1], &p, 10);
+
+			if ( (!isspace(*p) && *p != 0) || ((TFCE_C != 6) && (TFCE_C != 18) && (TFCE_C != 26)) )
+		    {
+		        printf("TFCE connectivity must be 6, 18 or 26! You provided %s \n",argv[i+1]);
+				return EXIT_FAILURE;
+		    }
+            i += 2;
+        }
+        else if (strcmp(input,"-T2") == 0)
+        {
+            TFCE_2D = true;
+            i += 1;
         }
         else if (strcmp(input,"-cdt") == 0)
         {
@@ -486,6 +564,21 @@ int main(int argc, char **argv)
 	if (ANALYZE_GROUP_MEAN && (STATISTICAL_TEST == 1))
 	{
     	printf("Cannot use F-test for group mean, aborting! \n");
+        return EXIT_FAILURE;
+	}
+
+	// Same as FSL randomise --T2, which overrides the individual TFCE parameters
+	if (TFCE_2D)
+	{
+		INFERENCE_MODE = 3;
+		TFCE_H = 2.0f;
+		TFCE_E = 1.0f;
+		TFCE_C = 26;
+	}
+
+	if ((INFERENCE_MODE == 3) && (STATISTICAL_TEST == 1))
+	{
+    	printf("TFCE is not yet supported for F-tests (FSL converts F to z first), aborting! \n");
         return EXIT_FAILURE;
 	}
 
@@ -790,6 +883,10 @@ int main(int argc, char **argv)
 	AllocateMemory(h_ctxtxc_GLM, CONTRAST_SCALAR_SIZE, allMemoryPointers, numberOfMemoryPointers, allNiftiImages, numberOfNiftiImages, allocatedHostMemory, "CONTRAST_SCALARS");
 	AllocateMemory(h_Statistical_Maps, STATISTICAL_MAPS_SIZE, allMemoryPointers, numberOfMemoryPointers, allNiftiImages, numberOfNiftiImages, allocatedHostMemory, "STATISTICAL_MAPS");             
 	AllocateMemory(h_P_Values, STATISTICAL_MAPS_SIZE, allMemoryPointers, numberOfMemoryPointers, allNiftiImages, numberOfNiftiImages, allocatedHostMemory, "PERMUTATION_PVALUES");             
+	if (INFERENCE_MODE == 3)
+	{
+		AllocateMemory(h_TFCE_Maps, STATISTICAL_MAPS_SIZE, allMemoryPointers, numberOfMemoryPointers, allNiftiImages, numberOfNiftiImages, allocatedHostMemory, "TFCE_MAPS");
+	}
 
 	h_Permutation_Distributions = (float**)malloc(NUMBER_OF_CONTRASTS * sizeof(float*));
 	h_Permutation_Matrices = (unsigned short int**)malloc(NUMBER_OF_CONTRASTS * sizeof(unsigned short int*));
@@ -1493,7 +1590,9 @@ int main(int argc, char **argv)
 
 		BROCCOLI.SetAllocatedHostMemory(allocatedHostMemory);
 
-        BROCCOLI.SetInferenceMode(INFERENCE_MODE);        
+        BROCCOLI.SetInferenceMode(INFERENCE_MODE);
+        BROCCOLI.SetTFCEParameters(TFCE_H, TFCE_E, TFCE_C, TFCE_D);
+        BROCCOLI.SetOutputTFCEMapsMNI(h_TFCE_Maps);        
         BROCCOLI.SetClusterDefiningThreshold(CLUSTER_DEFINING_THRESHOLD);
         BROCCOLI.SetSignificanceLevel(SIGNIFICANCE_LEVEL);		
         BROCCOLI.SetNumberOfSubjects(NUMBER_OF_SUBJECTS);
@@ -1696,6 +1795,10 @@ int main(int argc, char **argv)
 	    WriteNifti(outputNifti,h_Statistical_Maps,"_perm_fvalues",ADD_FILENAME,DONT_CHECK_EXISTING_FILE);
 	}
     WriteNifti(outputNifti,h_P_Values,"_perm_pvalues",ADD_FILENAME,DONT_CHECK_EXISTING_FILE);
+	if (INFERENCE_MODE == 3)
+	{
+	    WriteNifti(outputNifti,h_TFCE_Maps,"_perm_tfce",ADD_FILENAME,DONT_CHECK_EXISTING_FILE);
+	}
 
 	endTime = GetWallTime();
 
