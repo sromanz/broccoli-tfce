@@ -1318,9 +1318,10 @@ bool BROCCOLI_LIB::OpenCLInitiate(cl_uint OPENCL_PLATFORM, cl_uint OPENCL_DEVICE
 	}
 	else
 	{
-		INITIALIZATION_ERROR = "Unsupported OpenCL vendor.";
-		OPENCL_ERROR = "";
-		return false;
+		// Any other conformant OpenCL platform (e.g. POCL on CPU, used for testing)
+		VENDOR = OTHER_VENDOR;
+		binaryFilename = "broccoli_lib_kernel_Generic";
+		platformName = "Generic";
 	}
 
 	// Create a command queue for the selected device

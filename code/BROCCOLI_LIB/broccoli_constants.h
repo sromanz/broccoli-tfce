@@ -115,6 +115,7 @@
 #define INTEL 1
 #define AMD 2
 #define APPLE 3
+#define OTHER_VENDOR 4
 
 #define NUMBER_OF_FILTERS_FOR_NONLINEAR_REGISTRATION 6
 
