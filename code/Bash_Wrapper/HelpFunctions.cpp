@@ -2,29 +2,80 @@
 #include <time.h>
 #include <string.h>
 #include <sys/time.h>
+#include <string>
+#include <stdlib.h>
+
+// Position in filename where a NIfTI extension (.nii, .nii.gz, .hdr, .img, .hdr.gz, .img.gz) starts,
+// or strlen(filename) if there is none. Only the end of the name is checked, so dots in
+// directory names do not matter.
+size_t NiftiExtensionPosition(const char* filename)
+{
+	std::string name(filename);
+	const char* extensions[] = {".nii.gz", ".hdr.gz", ".img.gz", ".nii", ".hdr", ".img"};
+	for (int e = 0; e < 6; e++)
+	{
+		std::string ext(extensions[e]);
+		if ( (name.size() > ext.size()) && (name.compare(name.size() - ext.size(), ext.size(), ext) == 0) )
+		{
+			return name.size() - ext.size();
+		}
+	}
+	return name.size();
+}
+
+// Output filename for a prefix: keeps an explicit extension, otherwise adds one following
+// FSLOUTPUTTYPE as in FSL (NIFTI_GZ -> .nii.gz (default), NIFTI -> .nii, NIFTI_PAIR -> .hdr,
+// NIFTI_PAIR_GZ -> .hdr.gz)
+std::string NiftiOutputFilename(const char* prefixOrFilename, bool forceDefaultExtension)
+{
+	std::string name(prefixOrFilename);
+	size_t pos = NiftiExtensionPosition(prefixOrFilename);
+	if ( (pos < name.size()) && !forceDefaultExtension )
+	{
+		return name;
+	}
+	name = name.substr(0, pos);
+
+	std::string extension = ".nii.gz";
+	const char* type = getenv("FSLOUTPUTTYPE");
+	if (type != NULL)
+	{
+		std::string t(type);
+		if (t == "NIFTI")
+		{
+			extension = ".nii";
+		}
+		else if (t == "NIFTI_PAIR")
+		{
+			extension = ".hdr";
+		}
+		else if (t == "NIFTI_PAIR_GZ")
+		{
+			extension = ".hdr.gz";
+		}
+	}
+	return name + extension;
+}
 
 void CheckFileExtension(const char* filename, bool& extensionOK, std::string& extension)
 {
-    const char* p = filename;
-    int dotPosition = 0;
-    while ( (p != NULL) && ((*p) != '.') )
-    {
-        p++;
-    }
-	extension = "";
-	extension.append(p);
-        
-	// Compare extension to OK values
-	std::string extension1 = ".nii";
-	std::string extension2 = ".nii.gz";
-
-	if ( (extension.compare(extension1) != 0) && (extension.compare(extension2) != 0) )
+	std::string name(filename);
+	if ( (name.size() > 7) && (name.compare(name.size() - 7, 7, ".nii.gz") == 0) )
 	{
-		extensionOK = false;
+		extension = ".nii.gz";
+		extensionOK = true;
+	}
+	else if ( (name.size() > 4) && (name.compare(name.size() - 4, 4, ".nii") == 0) )
+	{
+		extension = ".nii";
+		extensionOK = true;
 	}
 	else
 	{
-		extensionOK = true;			
+		size_t slash = name.find_last_of('/');
+		size_t dot = name.find('.', (slash == std::string::npos) ? 0 : slash + 1);
+		extension = (dot == std::string::npos) ? "" : name.substr(dot);
+		extensionOK = false;
 	}
 }
 
@@ -33,13 +84,7 @@ void CreateFilename(char *& filenameWithExtension, nifti_image* inputNifti, cons
 	// Find the dot in the original filename
 	if (!CHANGE_OUTPUT_FILENAME)
 	{
-	    const char* p = inputNifti->fname;
-	    int dotPosition = 0;
-	    while ( (p != NULL) && ((*p) != '.') )
-	    {
-	        p++;
-	        dotPosition++;
-	    }
+	    int dotPosition = (int)NiftiExtensionPosition(inputNifti->fname);
     		
 	    // Allocate temporary array
 	    filenameWithExtension = (char*)malloc(strlen(inputNifti->fname) + strlen(extension) + 1);
@@ -50,15 +95,7 @@ void CreateFilename(char *& filenameWithExtension, nifti_image* inputNifti, cons
 	}
 	else
 	{
-	    const char* p = outputFilename;
-	    int dotPosition = 0;
-		int i = 0;
-	    while ( (p != NULL) && ((*p) != '.') && (i < strlen(outputFilename)) )
-	    {
-	        p++;
-	        dotPosition++;
-			i++;
-	    }
+	    int dotPosition = (int)NiftiExtensionPosition(outputFilename);
     	
 	    // Allocate temporary array
 	    filenameWithExtension = (char*)malloc(strlen(outputFilename) + strlen(extension) + 1);
@@ -341,14 +378,8 @@ bool WriteNifti(nifti_image* inputNifti, float* data, const char* filename, bool
     // Add the provided filename extension to the original filename, before the dot
     if (addFilename)
     {
-        // Find the dot in the original filename
-        const char* p = inputNifti->fname;
-        int dotPosition = 0;
-        while ( (p != NULL) && ((*p) != '.') )
-        {
-            p++;
-            dotPosition++;
-        }
+        // Insert before the NIfTI extension at the end of the filename (directories may contain dots)
+        int dotPosition = (int)NiftiExtensionPosition(inputNifti->fname);
     
         // Allocate temporary array
         filenameWithExtension = (char*)malloc(strlen(inputNifti->fname) + strlen(filename) + 1);

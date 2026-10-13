@@ -172,7 +172,7 @@ int main(int argc, char **argv)
         printf(" -tfceD                     TFCE step size override (default: max of unpermuted statistic / 100) \n");
         printf(" -T2                        TFCE for 2D/skeleton data (TBSS), sets inference mode 3, H = 2, E = 1, C = 26 (as FSL --T2) \n");
         printf(" -significance              The significance level to calculate the threshold for (default 0.05) \n");		
-		printf(" -output                    Set output filename (default volumes_perm_tvalues.nii and volumes_perm_pvalues.nii) \n");
+		printf(" -output                    Set output filename prefix (default volumes_perm_tvalues.nii.gz etc.; .nii.gz unless FSLOUTPUTTYPE=NIFTI or an extension is given) \n");
 		printf(" -writepermutationvalues    Write all the permutation values to a text file \n");
 		printf(" -writepermutations         Write all the random permutations (or sign flips) to a text file \n");
 		printf(" -permutationfile           Use a specific permutation file or sign flipping file (e.g. from FSL) \n");
@@ -1698,7 +1698,14 @@ int main(int argc, char **argv)
 			std::string permValues(PERMUTATION_VALUES_FILE);
 			char tmp[1000];
 			sprintf(tmp, "%zu", c+1);
-			permValues.insert(permValues.find("."),std::string(tmp));
+			// Insert the contrast number before the extension of the file name (not at a dot in a directory name)
+			size_t slashPos = permValues.find_last_of('/');
+			size_t dotPos = permValues.find_last_of('.');
+			if ( (dotPos == std::string::npos) || ((slashPos != std::string::npos) && (dotPos < slashPos)) )
+			{
+				dotPos = permValues.size();
+			}
+			permValues.insert(dotPos,std::string(tmp));
 
 		    permutationValues.open(permValues.c_str());      
 
@@ -1780,14 +1787,18 @@ int main(int argc, char **argv)
 	allNiftiImages[numberOfNiftiImages] = outputNifti;
 	numberOfNiftiImages++;    
 
+	// Output files are compressed (.nii.gz) by default, as in FSL; FSLOUTPUTTYPE=NIFTI gives .nii,
+	// and an explicit extension on -output is kept
+	std::string outputBase;
 	if (!CHANGE_OUTPUT_NAME)
 	{
-    	nifti_set_filenames(outputNifti, inputData->fname, 0, 1);    
+		outputBase = NiftiOutputFilename(inputData->fname, true);
 	}
 	else
 	{
-		nifti_set_filenames(outputNifti, outputFilename, 0, 1);    
+		outputBase = NiftiOutputFilename(outputFilename, false);
 	}
+	nifti_set_filenames(outputNifti, outputBase.c_str(), 0, 1);
 
     startTime = GetWallTime(); 
         

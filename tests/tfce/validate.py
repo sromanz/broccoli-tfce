@@ -4,11 +4,12 @@ FSL-compatible reference in tfce_ref.py.
 
 Usage: validate.py <dir> <output_prefix> [--H 2 --E 0.5 --C 6]
 <dir> must contain data.nii.gz, mask.nii.gz and the BROCCOLI outputs
-<prefix>_perm_tvalues.nii, <prefix>_perm_tfce.nii, <prefix>_perm_pvalues.nii,
+<prefix>_perm_tvalues, <prefix>_perm_tfce, <prefix>_perm_pvalues (.nii or .nii.gz),
 permvalues1.txt (-writepermutationvalues permvalues.txt) and
 permvectors.txt (-writepermutations permvectors.txt).
 """
 import argparse
+import glob
 import os
 import sys
 
@@ -46,11 +47,17 @@ def main():
     a = ap.parse_args()
     d = lambda f: os.path.join(a.dir, f)
 
+    def out(suffix):
+        hits = sorted(glob.glob(d(a.prefix + suffix + ".nii*")) + glob.glob(d(a.prefix + suffix + ".hdr*")))
+        if not hits:
+            sys.exit(f"missing {a.prefix}{suffix}.nii[.gz]")
+        return np.asarray(nib.load(hits[0]).dataobj, np.float32).squeeze()
+
     data = nib.load(d("data.nii.gz")).get_fdata(dtype=np.float32)
     mask = nib.load(d("mask.nii.gz")).get_fdata(dtype=np.float32) == 1
-    t_b = np.asarray(nib.load(d(a.prefix + "_perm_tvalues.nii")).dataobj, np.float32).squeeze()
-    tfce_b = np.asarray(nib.load(d(a.prefix + "_perm_tfce.nii")).dataobj, np.float32).squeeze()
-    p_b = np.asarray(nib.load(d(a.prefix + "_perm_pvalues.nii")).dataobj, np.float32).squeeze()
+    t_b = out("_perm_tvalues")
+    tfce_b = out("_perm_tfce")
+    p_b = out("_perm_pvalues")
     null_b = np.loadtxt(d("permvalues1.txt"), dtype=np.float32).ravel()
     signs = np.loadtxt(d("permvectors.txt"), dtype=np.float32)
     ok = True

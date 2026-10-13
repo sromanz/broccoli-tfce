@@ -16,8 +16,10 @@ RandomiseGroupLevel data.nii.gz -design design.mat -contrasts design.con -mask m
 | `-tfceH`, `-tfceE`, `-tfceC` | height / extent exponent, connectivity (6, 18, 26) | `--tfce_H`, `--tfce_E`, `--tfce_C` |
 | `-tfceD` | fixed step size (default max of unpermuted statistic / 100) | `--tfce_D` |
 
-Outputs: `res_perm_tvalues.nii` (t-map), `res_perm_tfce.nii` (TFCE of the t-map, = FSL `_tfce_tstatN`),
-`res_perm_pvalues.nii` (FWE-corrected 1-p, = FSL `_tfce_corrp_tstatN`).
+Outputs: `res_perm_tvalues.nii.gz` (t-map), `res_perm_tfce.nii.gz` (TFCE of the t-map, = FSL `_tfce_tstatN`),
+`res_perm_pvalues.nii.gz` (FWE-corrected 1-p, = FSL `_tfce_corrp_tstatN`).
+Like FSL, outputs are compressed `.nii.gz` unless `FSLOUTPUTTYPE=NIFTI` is set (then `.nii`);
+an explicit extension on `-output` (e.g. `-output res.nii`) is always kept.
 F-tests with TFCE are not supported yet (FSL converts F to z first).
 
 ## Build (any OpenCL platform)
