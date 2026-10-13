@@ -1,3 +1,5 @@
 # Machine-specific OpenCL kernel caches from generic platforms (e.g. POCL test runs)
 compiled/Kernels/*_Generic_*
 __pycache__/
+# Local build output (tests/tfce/build_local.sh)
+/build/

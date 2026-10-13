@@ -8,6 +8,8 @@ set -e
 ROOT=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
 B=${1:-$ROOT/build}
 mkdir -p "$B"
+# The script changes directory below, so turn a relative build path into an absolute one
+B=$(cd "$B" && pwd)
 
 # ---- locate opencl.h (BROCCOLI includes it as <opencl.h>, so we need the CL/ directory itself)
 find_cl_include() {
