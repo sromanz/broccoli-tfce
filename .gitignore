@@ -1,0 +1,2 @@
+# Machine-specific OpenCL kernel caches from generic platforms (e.g. POCL test runs)
+compiled/Kernels/*_Generic_*
