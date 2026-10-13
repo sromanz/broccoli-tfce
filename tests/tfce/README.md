@@ -22,12 +22,19 @@ F-tests with TFCE are not supported yet (FSL converts F to z first).
 
 ## Build (any OpenCL platform)
 
+Use this script, not BROCCOLI's old `compile_*.sh` scripts (those expect Intel/AMD SDKs under `/opt`).
+
 ```
-tests/tfce/build_local.sh build                       # -> build/RandomiseGroupLevel
-export BROCCOLI_DIR=$PWD/ LD_LIBRARY_PATH=$PWD/code/BROCCOLI_LIB/clBLASLinux
+# once, if not installed (the NVIDIA driver has the OpenCL runtime but not the headers):
+sudo apt install opencl-headers ocl-icd-opencl-dev clinfo      # Fedora: opencl-headers ocl-icd-devel clinfo
+
+tests/tfce/build_local.sh build                               # -> build/RandomiseGroupLevel
+export BROCCOLI_DIR=$PWD/ LD_LIBRARY_PATH=$PWD/code/BROCCOLI_LIB/clBLASLinux:$LD_LIBRARY_PATH
 ```
-On an NVIDIA machine the OpenCL headers/ICD loader come from the driver (`ocl-icd-opencl-dev`, `opencl-headers`);
-set `OPENCL_INCLUDE` if the headers are not in `/usr/include/CL`. `clinfo -l` should list the Quadro.
+The script finds `opencl.h` in `/usr/include/CL`, a CUDA install (`/usr/local/cuda*/include/CL`) or the
+Intel/AMD SDK folders; otherwise set `OPENCL_INCLUDE=/path/to/CL` (and `OPENCL_LIB` for `libOpenCL.so`).
+Without root, conda works: `conda install -c conda-forge khronos-opencl-icd-loader opencl-headers`.
+`clinfo -l` should list the Quadro; pick it with `-platform P -device D` if it is not platform 0 / device 0.
 Kernel binaries are cached in `compiled/Kernels/` and rebuilt automatically when kernel sources change.
 
 ## Self-test (no FSL needed)
