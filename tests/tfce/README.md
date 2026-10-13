@@ -16,8 +16,27 @@ RandomiseGroupLevel data.nii.gz -design design.mat -contrasts design.con -mask m
 | `-tfceH`, `-tfceE`, `-tfceC` | height / extent exponent, connectivity (6, 18, 26) | `--tfce_H`, `--tfce_E`, `--tfce_C` |
 | `-tfceD` | fixed step size (default max of unpermuted statistic / 100) | `--tfce_D` |
 
-Outputs: `res_perm_tvalues.nii.gz` (t-map), `res_perm_tfce.nii.gz` (TFCE of the t-map, = FSL `_tfce_tstatN`),
-`res_perm_pvalues.nii.gz` (FWE-corrected 1-p, = FSL `_tfce_corrp_tstatN`).
+### Outputs and their FSL randomise equivalents
+
+BROCCOLI `-output res`, FSL `-o fsl`. BROCCOLI writes **one 4D file with one volume per contrast**;
+FSL writes **one file per contrast** (`...tstat1`, `...tstat2`, ...). Both store corrected p-values as
+**1 - p** (0.95 = p 0.05).
+
+| BROCCOLI file | Content | FSL equivalent | FSL option needed |
+|---|---|---|---|
+| `res_perm_tvalues` | t-statistic (GLM t-test or group mean) | `fsl_tstatN` | always written |
+| `res_perm_fvalues` | F-statistic (`-teststatistics 1`) | `fsl_fstatN` | always written |
+| `res_perm_tfce` | TFCE-enhanced t-map (`-inferencemode 3`) | `fsl_tfce_tstatN` | `-T -R` |
+| `res_perm_pvalues` with `-inferencemode 3` | FWE-corrected 1-p, TFCE | `fsl_tfce_corrp_tstatN` | `-T` |
+| `res_perm_pvalues` with `-inferencemode 0` | FWE-corrected 1-p, voxel-wise (max t) | `fsl_vox_corrp_tstatN` | `-x` |
+| `res_perm_pvalues` with `-inferencemode 1` (default) | FWE-corrected 1-p, cluster extent, threshold `-cdt` | `fsl_clustere_corrp_tstatN` | `-c <thr>` |
+| `res_perm_pvalues` with `-inferencemode 2` | FWE-corrected 1-p, cluster mass, threshold `-cdt` | `fsl_clusterm_corrp_tstatN` | `-C <thr>` |
+| `null.txt` → `null1.txt`, `null2.txt`, ... (`-writepermutationvalues null.txt`) | max statistic of each permutation (first = unpermuted) | `fsl_tfce_corrp_tstatN.txt` (also `_vox_`, `_clustere_`, `_clusterm_`) | `-N` |
+| `perms.txt` (`-writepermutations perms.txt`) | permutation / sign-flip vectors used | `fsl_perm_tstatN.txt` | `-P` (different text layout) |
+| *(none)* | uncorrected p-values | `fsl_tfce_p_tstatN`, `fsl_vox_p_tstatN`, ... | `--uncorrp` |
+
+Only the TFCE outputs (`-inferencemode 3`) have been checked against FSL here; modes 0-2 are BROCCOLI's
+original implementation (cluster modes use 26-connectivity and BROCCOLI's default `-cdt 2.5`).
 Like FSL, outputs are compressed `.nii.gz` unless `FSLOUTPUTTYPE=NIFTI` is set (then `.nii`);
 an explicit extension on `-output` (e.g. `-output res.nii`) is always kept.
 F-tests with TFCE are not supported yet (FSL converts F to z first).
