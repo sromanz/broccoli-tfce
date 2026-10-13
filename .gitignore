@@ -1,5 +1,6 @@
-# Machine-specific OpenCL kernel caches from generic platforms (e.g. POCL test runs)
-compiled/Kernels/*_Generic_*
+# Machine-specific OpenCL kernel caches and build logs, written on first run
+compiled/Kernels/*.bin
+compiled/Kernels/buildInfo_*
 __pycache__/
 # Local build output (tests/tfce/build_local.sh)
 /build/
