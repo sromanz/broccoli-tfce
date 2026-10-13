@@ -1581,8 +1581,13 @@ int main(int argc, char **argv)
     }
     // Initialization OK
     else
-    {        
-        BROCCOLI.SetInputFirstLevelResults(h_First_Level_Results);        
+    {
+        if (PRINT)
+        {
+            printf("Running on OpenCL platform %d (%s), device %d (%s)\n", OPENCL_PLATFORM, BROCCOLI.GetOpenCLPlatformName(), OPENCL_DEVICE, BROCCOLI.GetOpenCLDeviceName());
+        }
+
+        BROCCOLI.SetInputFirstLevelResults(h_First_Level_Results);
         BROCCOLI.SetInputMNIBrainMask(h_Mask);        
         BROCCOLI.SetMNIWidth(DATA_W);
         BROCCOLI.SetMNIHeight(DATA_H);

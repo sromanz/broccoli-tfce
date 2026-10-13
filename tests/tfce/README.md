@@ -37,6 +37,30 @@ Without root, conda works: `conda install -c conda-forge khronos-opencl-icd-load
 `clinfo -l` should list the Quadro; pick it with `-platform P -device D` if it is not platform 0 / device 0.
 Kernel binaries are cached in `compiled/Kernels/` and rebuilt automatically when kernel sources change.
 
+## Running on the GPU
+
+BROCCOLI runs on whatever OpenCL device you select with `-platform P -device D` (default 0 / 0).
+
+1. List the OpenCL devices: `clinfo -l`. Platforms and devices are numbered from 0 in the order shown, e.g.
+   ```
+   Platform #0: NVIDIA CUDA
+    `-- Device #0: Quadro P4000
+   Platform #1: Portable Computing Language
+    `-- Device #0: cpu-...
+   ```
+2. Pass the Quadro's numbers (not needed if it is platform 0, device 0):
+   ```
+   RandomiseGroupLevel data.nii.gz -groupmean -mask mask.nii.gz -inferencemode 3 -platform 0 -device 0 -output res
+   ```
+3. Check the first lines of the output: `Running on OpenCL platform 0 (Nvidia), device 0 (QuadroP4000)`.
+   While it runs, `nvidia-smi` should list `RandomiseGroupLevel` as a process using the GPU.
+
+If `clinfo -l` shows no NVIDIA platform although `nvidia-smi` works, the NVIDIA OpenCL driver part is missing:
+check that `/etc/OpenCL/vendors/nvidia.icd` exists (Ubuntu: it comes with the `nvidia-opencl-icd` /
+`libnvidia-compute-<version>` package matching your driver). In Docker, start the container with
+`--gpus all -e NVIDIA_DRIVER_CAPABILITIES=compute,utility`.
+The first run compiles the kernels for the GPU (can take a minute); later runs reuse the cached binaries.
+
 ## Self-test (no FSL needed)
 
 ```
