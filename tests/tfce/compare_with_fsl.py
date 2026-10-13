@@ -3,6 +3,7 @@
 
 Usage:
   compare_with_fsl.py <fsl_prefix> <broccoli_prefix> <mask> [--contrast 1]
+                      [--fsl-null fsl_tfce_corrp_tstat1.txt --broccoli-null broccoli_null1.txt]
 
 Expects <fsl_prefix>_tstatN, <fsl_prefix>_tfce_tstatN, <fsl_prefix>_tfce_corrp_tstatN (.nii.gz)
 and <broccoli_prefix>_perm_tvalues.nii, _perm_tfce.nii, _perm_pvalues.nii.
@@ -31,6 +32,8 @@ def main():
     ap.add_argument("broccoli_prefix")
     ap.add_argument("mask")
     ap.add_argument("--contrast", type=int, default=1)
+    ap.add_argument("--fsl-null", help="FSL max-TFCE null distribution (randomise -N)")
+    ap.add_argument("--broccoli-null", help="BROCCOLI null distribution (-writepermutationvalues)")
     a = ap.parse_args()
     c = a.contrast
     m = np.asarray(nib.load(a.mask).dataobj) > 0
@@ -49,6 +52,17 @@ def main():
           f"max rel. diff {rel.max():.3g}, voxels with rel. diff > 1e-4: {(rel > 1e-4).sum()}")
     dp = np.abs(corrp_f - p_b)[m]
     print(f"corrp (1-p): max |diff| = {dp.max():.3g}, voxels differing: {(dp > 1e-6).sum()} of {m.sum()}")
+    if a.fsl_null and a.broccoli_null:
+        nf = np.loadtxt(a.fsl_null, dtype=np.float64).ravel()
+        nb = np.loadtxt(a.broccoli_null, dtype=np.float64).ravel()
+        scale = max(np.abs(nf).max(), 1e-12)
+        if len(nf) != len(nb):
+            print(f"null       : different lengths, FSL {len(nf)}, BROCCOLI {len(nb)}")
+        else:
+            same_order = np.abs(nf - nb).max() / scale
+            sorted_diff = np.abs(np.sort(nf) - np.sort(nb)).max() / scale
+            print(f"null       : {len(nf)} permutations, max rel. diff same order {same_order:.3g}, "
+                  f"sorted {sorted_diff:.3g}")
     for thr in (0.95, 0.99):
         sf, sb = (corrp_f[m] >= thr), (p_b[m] >= thr)
         print(f"  1-p >= {thr}: FSL {sf.sum()} voxels, BROCCOLI {sb.sum()} voxels, "

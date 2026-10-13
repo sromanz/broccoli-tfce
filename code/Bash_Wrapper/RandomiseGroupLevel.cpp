@@ -175,7 +175,7 @@ int main(int argc, char **argv)
 		printf(" -output                    Set output filename prefix (default volumes_perm_tvalues.nii.gz etc.; .nii.gz unless FSLOUTPUTTYPE=NIFTI or an extension is given) \n");
 		printf(" -writepermutationvalues    Write all the permutation values to a text file \n");
 		printf(" -writepermutations         Write all the random permutations (or sign flips) to a text file \n");
-		printf(" -permutationfile           Use a specific permutation file or sign flipping file (e.g. from FSL) \n");
+		printf(" -permutationfile           Use a specific permutation file (rows of 1-based subject indices, e.g. FSL randomise -P output; one block for all contrasts or one block per contrast) or sign flipping file (rows of +-1) \n");
         printf(" -quiet                     Don't print anything to the terminal (default false) \n");
         printf(" -verbose                   Print extra stuff (default false) \n");
         printf("\n\n");
@@ -1326,48 +1326,106 @@ int main(int argc, char **argv)
 
     // ------------------------------------------------
 
-	// Read permutation file
+	// Read permutation file (GLM designs). The file holds one permutation per row as 1-based subject
+	// indices (the format written by -writepermutations and by FSL randomise -P), where row i of the
+	// permuted design is row p[i] of the original design. It may contain either one block of
+	// permutations that is used for every contrast, or one block per contrast, in contrast order.
+	// The first row of each block should be the identity (unpermuted design).
 	if (USE_PERMUTATION_FILE && (!ANALYZE_GROUP_MEAN))
 	{
-		h_Permutation_Matrix = h_Permutation_Matrices[0];
-
 		std::ifstream permutations;
     	permutations.open(PERMUTATION_INPUT_FILE); 
-
-		// Should check if number of permutations and number of subjects is OK
-
-		if (permutations.good())
-		{
-			for (size_t p = 0; p < NUMBER_OF_PERMUTATIONS_PER_CONTRAST[0]; p++)
-			{
-				for (size_t s = 0; s < NUMBER_OF_SUBJECTS; s++)
-				{
-					float temp;
-					if (permutations >> temp)
-					{
-						h_Permutation_Matrix[s + p * NUMBER_OF_SUBJECTS] = (unsigned short int)temp;
-						h_Permutation_Matrix[s + p * NUMBER_OF_SUBJECTS] -= 1;				
-					}
-					else
-					{
-						permutations.close();
-				        printf("Could not read all values of the permutation file %s, aborting! \n",PERMUTATION_INPUT_FILE);      
-				        FreeAllMemory(allMemoryPointers,numberOfMemoryPointers);
-				        FreeAllNiftiImages(allNiftiImages,numberOfNiftiImages);
-				        return EXIT_FAILURE;
-					}
-				}			
-			}
-			permutations.close();
-		}
-		else	
+		if (!permutations.good())
 		{
 			permutations.close();
 	        printf("Could not open permutation file %s, aborting! \n",PERMUTATION_INPUT_FILE);      
 	        FreeAllMemory(allMemoryPointers,numberOfMemoryPointers);
 	        FreeAllNiftiImages(allNiftiImages,numberOfNiftiImages);
 	        return EXIT_FAILURE;
-		}	
+		}
+		std::vector<double> values;
+		double temp;
+		while (permutations >> temp)
+		{
+			values.push_back(temp);
+		}
+		permutations.close();
+
+		size_t neededOneBlock = NUMBER_OF_PERMUTATIONS_PER_CONTRAST[0] * NUMBER_OF_SUBJECTS;
+		size_t neededAllBlocks = 0;
+		bool samePermutationsPerContrast = true;
+		for (size_t c = 0; c < NUMBER_OF_STATISTICAL_MAPS; c++)
+		{
+			neededAllBlocks += NUMBER_OF_PERMUTATIONS_PER_CONTRAST[c] * NUMBER_OF_SUBJECTS;
+			if (NUMBER_OF_PERMUTATIONS_PER_CONTRAST[c] != NUMBER_OF_PERMUTATIONS_PER_CONTRAST[0])
+			{
+				samePermutationsPerContrast = false;
+			}
+		}
+
+		bool oneBlockPerContrast;
+		if ( (NUMBER_OF_STATISTICAL_MAPS > 1) && (values.size() == neededAllBlocks) )
+		{
+			oneBlockPerContrast = true;
+		}
+		else if ( samePermutationsPerContrast && (values.size() >= neededOneBlock) )
+		{
+			oneBlockPerContrast = false;
+		}
+		else
+		{
+	        printf("Permutation file %s contains %zu values, but %zu permutations x %zu subjects (one block for all contrasts) or %zu values (one block per contrast) are needed, aborting! \n",PERMUTATION_INPUT_FILE,values.size(),NUMBER_OF_PERMUTATIONS_PER_CONTRAST[0],NUMBER_OF_SUBJECTS,neededAllBlocks);      
+	        FreeAllMemory(allMemoryPointers,numberOfMemoryPointers);
+	        FreeAllNiftiImages(allNiftiImages,numberOfNiftiImages);
+	        return EXIT_FAILURE;
+		}
+
+		size_t offset = 0;
+		for (size_t c = 0; c < NUMBER_OF_STATISTICAL_MAPS; c++)
+		{
+			if (!oneBlockPerContrast)
+			{
+				offset = 0;
+			}
+			h_Permutation_Matrix = h_Permutation_Matrices[c];
+			for (size_t p = 0; p < NUMBER_OF_PERMUTATIONS_PER_CONTRAST[c]; p++)
+			{
+				std::vector<bool> used(NUMBER_OF_SUBJECTS, false);
+				for (size_t s = 0; s < NUMBER_OF_SUBJECTS; s++)
+				{
+					double value = values[offset++];
+					int index = (int)value;
+					if ( ((double)index != value) || (index < 1) || (index > (int)NUMBER_OF_SUBJECTS) || used[index-1] )
+					{
+				        printf("Row %zu of the permutation file %s (contrast %zu) is not a permutation of 1 ... %zu, aborting! \n",p+1,PERMUTATION_INPUT_FILE,c+1,NUMBER_OF_SUBJECTS);      
+				        FreeAllMemory(allMemoryPointers,numberOfMemoryPointers);
+				        FreeAllNiftiImages(allNiftiImages,numberOfNiftiImages);
+				        return EXIT_FAILURE;
+					}
+					used[index-1] = true;
+					h_Permutation_Matrix[s + p * NUMBER_OF_SUBJECTS] = (unsigned short int)(index - 1);
+				}			
+			}
+		}
+		for (size_t c = 0; c < NUMBER_OF_STATISTICAL_MAPS; c++)
+		{
+			bool identity = true;
+			for (size_t s = 0; s < NUMBER_OF_SUBJECTS; s++)
+			{
+				if (h_Permutation_Matrices[c][s] != s)
+				{
+					identity = false;
+				}
+			}
+			if (!identity)
+			{
+				printf("Warning: the first permutation for contrast %zu in %s is not the unpermuted design (1 2 3 ...), but BROCCOLI expects it first%s!\n",c+1,PERMUTATION_INPUT_FILE,(INFERENCE_MODE == 3) ? " (the TFCE step size and observed TFCE map are taken from it)" : "");
+			}
+		}
+		if (PRINT)
+		{
+			printf("Read %s from %s\n", oneBlockPerContrast ? "one block of permutations per contrast" : "one block of permutations used for all contrasts", PERMUTATION_INPUT_FILE);
+		}
 	}
 	// Read sign flipping file
 	else if (USE_PERMUTATION_FILE && ANALYZE_GROUP_MEAN)
@@ -1384,7 +1442,14 @@ int main(int argc, char **argv)
 				for (size_t s = 0; s < NUMBER_OF_SUBJECTS; s++)
 				{
 					float temp;
-					permutations >> temp;
+					if ( !(permutations >> temp) || ((temp != 1.0f) && (temp != -1.0f)) )
+					{
+						permutations.close();
+				        printf("Sign flipping file %s must contain %zu rows of %zu values +1 or -1, aborting! \n",PERMUTATION_INPUT_FILE,NUMBER_OF_PERMUTATIONS_PER_CONTRAST[0],NUMBER_OF_SUBJECTS);      
+				        FreeAllMemory(allMemoryPointers,numberOfMemoryPointers);
+				        FreeAllNiftiImages(allNiftiImages,numberOfNiftiImages);
+				        return EXIT_FAILURE;
+					}
 					h_Sign_Matrix[s + p * NUMBER_OF_SUBJECTS] = temp;
 				}			
 			}
@@ -1748,13 +1813,18 @@ int main(int argc, char **argv)
 			}
 			else
 			{
-	    	    for (size_t p = 0; p < NUMBER_OF_PERMUTATIONS_PER_CONTRAST[0]; p++)
-		        {
-		    	    for (size_t s = 0; s < NUMBER_OF_SUBJECTS; s++)
+				// One block of permutations per contrast, in contrast order (readable by -permutationfile)
+				for (size_t c = 0; c < NUMBER_OF_STATISTICAL_MAPS; c++)
+				{
+					h_Permutation_Matrix = h_Permutation_Matrices[c];
+		    	    for (size_t p = 0; p < NUMBER_OF_PERMUTATIONS_PER_CONTRAST[c]; p++)
 			        {
-		            	permutationVectors << std::setprecision(6) << std::fixed << (double)(h_Permutation_Matrix[s + p * NUMBER_OF_SUBJECTS] + 1) << " ";
+			    	    for (size_t s = 0; s < NUMBER_OF_SUBJECTS; s++)
+				        {
+			            	permutationVectors << (int)(h_Permutation_Matrix[s + p * NUMBER_OF_SUBJECTS] + 1) << " ";
+						}
+						permutationVectors << std::endl;
 					}
-					permutationVectors << std::endl;
 				}
 			}
 		    permutationVectors.close();

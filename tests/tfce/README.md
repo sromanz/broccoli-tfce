@@ -96,23 +96,37 @@ python3 <repo>/tests/tfce/validate.py /tmp/syn tfce   # prints PASS/FAIL
 ## Comparison with FSL randomise
 
 `run_comparison.sh` runs both programs on the same data with the same binary mask, times them
-and compares t-maps, TFCE maps and FWE-corrected p-values voxel by voxel (FSL must be loaded):
+and compares t-maps, TFCE maps, the max-TFCE null distributions and FWE-corrected p-values voxel by
+voxel, for every contrast (FSL must be loaded):
 
 ```
-tests/tfce/run_comparison.sh --synthetic /tmp/cmp                                   # 12-subject test data
-tests/tfce/run_comparison.sh all_subjects.nii.gz mask.nii.gz cmp_out 5000 -- -platform 0 -device 0
-```
-It runs `randomise -i data -o fsl -m mask -1 -T -R -n <n_perm>` and
-`RandomiseGroupLevel data -groupmean -mask mask -inferencemode 3 -permutations <n_perm>`
-(after an untimed warm-up run, so GPU kernel compilation is not counted), then prints a report and
-writes everything to `<outdir>/comparison.log`.
+# synthetic test data
+tests/tfce/run_comparison.sh --synthetic /tmp/cmp                       # one-sample, 12 subjects
+tests/tfce/run_comparison.sh --synthetic /tmp/cmp2 --two-groups         # 2 groups x 10 + age covariate
 
-What to expect:
-- **N <= 12 subjects** (n_perm >= 2^N): both programs use all 2^N sign flips, i.e. the identical null
-  distribution, so the corrected p-values should be identical in every voxel and the 95th percentiles
-  of the null should agree to ~1e-6 relative.
-- **More subjects**: both draw random sign flips. t- and TFCE maps still agree (~1e-6 relative; a
-  handful of voxels can differ more when a value lies within float rounding of a TFCE step), corrected
-  p-values agree within Monte Carlo error (about ±0.006 at p = 0.05 with 5000 permutations).
-- The script compares one-sample (group mean) designs. For GLM designs, run both programs by hand;
-  `compare_with_fsl.py fsl broccoli mask.nii.gz --contrast N` compares any contrast.
+# your data: one-sample (group mean) test
+tests/tfce/run_comparison.sh all_subjects.nii.gz mask.nii.gz cmp_out -n 5000 -- -platform 0 -device 0
+
+# your data: GLM, e.g. TBM with two groups and covariates (FSL design files, e.g. from Glm or design_ttest2)
+tests/tfce/run_comparison.sh logjac_all.nii.gz mask.nii.gz cmp_tbm --design design.mat --con design.con -n 5000
+```
+
+How it works:
+1. `randomise ... -T -R -N -P -n <n_perm>` with `-1` (one-sample) or `-d design.mat -t design.con`.
+   `-P` makes randomise write the permutations (or sign flips) it used.
+2. The FSL design files are converted to BROCCOLI's format (`fsl_to_broccoli_design.py`; the design
+   must have full rank, e.g. one column per group and no extra intercept, as `design_ttest2` writes).
+3. `RandomiseGroupLevel ... -inferencemode 3 -permutationfile <randomise's permutations>`, after an untimed
+   warm-up run so GPU kernel compilation is not counted.
+4. Report per contrast, plus timing and speed-up; everything is logged to `<outdir>/comparison.log`.
+
+Because both programs use the **same permutations**, and BROCCOLI handles covariates like randomise's
+default Freedman-Lane scheme (nuisance regressed out of the data, rows of the design permuted), the
+results should agree up to float rounding, for any number of subjects and any design:
+t ~1e-6, TFCE ~1e-6 relative, each permutation's max-TFCE ~1e-5 relative, corrected p-values identical.
+A handful of voxels can differ more if a value lies within float rounding of a TFCE step.
+With `--own-perms` BROCCOLI draws its own permutations; then corrected p-values only agree within
+Monte Carlo error (about +-0.006 at p = 0.05 with 5000 permutations).
+
+TFCE is one-sided: for TBM put both directions in `design.con`, e.g. `1 -1 0 ...` (group 1 expanded
+relative to group 2) and `-1 1 0 ...` (group 1 shrunk).
